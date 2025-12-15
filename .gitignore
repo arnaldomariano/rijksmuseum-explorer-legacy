@@ -21,3 +21,5 @@ favorites.json
 notes.json
 analytics/
 *.log
+data/analytics/
+*.jsonl
