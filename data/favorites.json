@@ -1,0 +1,287 @@
+{
+  "SK-A-5033": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-A-5033",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-A-5033"
+    },
+    "id": "en-SK-A-5033",
+    "objectNumber": "SK-A-5033",
+    "title": "Portrait of Marten Soolmans",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "Portrait of Marten Soolmans, Rembrandt van Rijn, 1634",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "974d1c9c-befa-4e1a-9926-ebd7f89557b5",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 11287,
+      "height": 17668,
+      "url": "https://lh3.googleusercontent.com/hDN8_JS4BbbksBXkxIDUldJvooejHBfQjgD3b_Jr73HjVOAs8thpnvCJA3WUtQFxlbjx-QB1-IyqhgEiM4dFLFk1Sg=s0"
+    },
+    "headerImage": {
+      "guid": "e6a28349-49ae-4c69-a971-ad8836936a1d",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1920,
+      "height": 460,
+      "url": "https://lh3.googleusercontent.com/smzena2yZjz8hCuzMNaAYbvFXqqPN-vSvs-ryFKz2KsNAzVdXm4kfLbK9PrpwI2f9eCO44PNIbBYv18HaufxMsHYqg=s0"
+    },
+    "productionPlaces": [
+      "Amsterdam"
+    ]
+  },
+  "SK-C-1768": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-C-1768",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-C-1768"
+    },
+    "id": "en-SK-C-1768",
+    "objectNumber": "SK-C-1768",
+    "title": "Portrait of Oopjen Coppit",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "Portrait of Oopjen Coppit, Rembrandt van Rijn, 1634",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "6dd85188-6e00-45f5-a749-b0d6f7bf373b",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 11811,
+      "height": 18326,
+      "url": "https://lh3.googleusercontent.com/ib8SNTK2Qk-z64UYuu-_mI3FswMpYmmNU871wu5diDEPyjxmYJcNI4qRtqxlvKkVnrXTAxAFkuHX7DAN9ZwPFzS5fGE=s0"
+    },
+    "headerImage": {
+      "guid": "6ac7e269-da2e-4bf3-a870-809db805fe62",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 4746,
+      "height": 1134,
+      "url": "https://lh3.googleusercontent.com/ydZiwQgiic6wYdPwjbx5s04tdOHwkOgbA_lvtMrQvjWMqz4rYJRrxCn0s3592MfHWN6K__QlR48S962J8c4mHEzYwwY=s0"
+    },
+    "productionPlaces": [
+      "Amsterdam"
+    ]
+  },
+  "SK-C-2": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-C-2",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-C-2"
+    },
+    "id": "en-SK-C-2",
+    "objectNumber": "SK-C-2",
+    "title": "Banquet at the Crossbowmen’s Guild in Celebration of the Treaty of Münster",
+    "hasImage": true,
+    "principalOrFirstMaker": "Bartholomeus van der Helst",
+    "longTitle": "Banquet at the Crossbowmen’s Guild in Celebration of the Treaty of Münster, Bartholomeus van der Helst, 1648",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "68df1929-68ba-4d9a-becc-e60289f7a7ef",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 9504,
+      "height": 4413,
+      "url": "https://lh3.googleusercontent.com/kmCDKP1kMN72zB-7CHBOBdCnyU3Z-NW7WIzuN_sIqm5n9xf6lG4oTtfcWsGW8qhbVYuwSDkYlhOglx7z4YaFL8UeFWU=s0"
+    },
+    "headerImage": {
+      "guid": "9dc69178-c089-420e-8181-6cd662c82a2c",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1920,
+      "height": 460,
+      "url": "https://lh3.googleusercontent.com/3taYbbzj47-gP_5Kj8gVtgDN2MzPHyGFRY3cYfIY_HCLub8Y-NpLI1oqNK7h-8uS4sMJgK2eihEt5WK1Hy-izt9QiJ4=s0"
+    },
+    "productionPlaces": []
+  },
+  "SK-C-597": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-C-597",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-C-597"
+    },
+    "id": "en-SK-C-597",
+    "objectNumber": "SK-C-597",
+    "title": "Portrait of a Woman, Probably Maria Trip (1619-1683)",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "Portrait of a Woman, Probably Maria Trip (1619-1683), Rembrandt van Rijn, 1639",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "165d03bb-95e8-4447-a911-865f1bd201d6",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 7965,
+      "height": 10415,
+      "url": "https://lh3.googleusercontent.com/AyiKhdEWJ7XmtPXQbRg_kWqKn6mCV07bsuUB01hJHjVVP-ZQFmzjTWt7JIWiQFZbb9l5tKFhVOspmco4lMwqwWImfgg=s0"
+    },
+    "headerImage": {
+      "guid": "f0270e59-baca-4429-ba00-d6c37b9ad00f",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1920,
+      "height": 460,
+      "url": "https://lh3.googleusercontent.com/MonorlaCKkTjeFrTBQyCb7kfmq8K--aWrThge7MsTItJxO_cw-8WbwgmTm0jTt-qfaFfnwa1qNEnsGYVHMPmCGmb0Pje=s0"
+    },
+    "productionPlaces": []
+  },
+  "SK-C-216": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-C-216",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-C-216"
+    },
+    "id": "en-SK-C-216",
+    "objectNumber": "SK-C-216",
+    "title": "Isaac and Rebecca, Known as ‘The Jewish Bride’",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "Isaac and Rebecca, Known as ‘The Jewish Bride’, Rembrandt van Rijn, c. 1665 - c. 1669",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "2fe159d5-619a-46d3-b3d2-9412e6f6bdd8",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 7620,
+      "height": 5542,
+      "url": "https://lh3.googleusercontent.com/mAyAjvYjIeAIlByhJx1Huctgeb58y7519XYP38oL1FXarhVlcXW7kxuwayOCFdnwtOp6B6F0HJmmws-Ceo5b_pNSSQs=s0"
+    },
+    "headerImage": {
+      "guid": "10911bfe-4e23-4c3a-95f7-515609f4d711",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1925,
+      "height": 461,
+      "url": "https://lh3.googleusercontent.com/0fTHP4xUsJZbQjzIHYtgHr1gRWBXjm9udaZT4ah35J_LyNzga-SyI0h61klse9sJqn53eUfuVIWZvP8IhW0jN4v91SM=s0"
+    },
+    "productionPlaces": []
+  },
+  "SK-C-6": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-C-6",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-C-6"
+    },
+    "id": "en-SK-C-6",
+    "objectNumber": "SK-C-6",
+    "title": "The Sampling Officials of the Amsterdam Drapers’ Guild, Known as ‘The Syndics’",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "The Sampling Officials of the Amsterdam Drapers’ Guild, Known as ‘The Syndics’, Rembrandt van Rijn, 1662",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "2c1ac367-9b11-4266-bb08-eea14ca0bb76",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 10880,
+      "height": 7372,
+      "url": "https://lh3.googleusercontent.com/gShVRyvLLbwVB8jeIPghCXgr96wxTHaM4zqfmxIWRsUpMhMn38PwuUU13o1mXQzLMt5HFqX761u8Tgo4L_JG1XLATvw=s0"
+    },
+    "headerImage": {
+      "guid": "5f71570b-21d2-4f00-9219-edb93137110c",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1920,
+      "height": 460,
+      "url": "https://lh3.googleusercontent.com/8vtyRTsJdGXuZhnHl5wF6vBgDNInw3q56DFYYr0Rzm1JJYNRl2iSIC30d_erXkTe_Yv8uJq1ZL56zFrXUpTFJrBDcbE=s0"
+    },
+    "productionPlaces": []
+  },
+  "SK-A-4691": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-A-4691",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-A-4691"
+    },
+    "id": "en-SK-A-4691",
+    "objectNumber": "SK-A-4691",
+    "title": "Self-portrait",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "Self-portrait, Rembrandt van Rijn, c. 1628",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "89de22aa-e19f-4c83-87ff-26dd8f319c05",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 4233,
+      "height": 5327,
+      "url": "https://lh3.googleusercontent.com/7qzT0pbclLB7y3fdS1GxzMnV7m3gD3gWnhlquhFaJSn6gNOvMmTUAX3wVlTzhMXIs8kM9IH8AsjHNVTs8em3XQI6uMY=s0"
+    },
+    "headerImage": {
+      "guid": "99061015-b788-42ed-a9d8-06db0bcf39e3",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1920,
+      "height": 460,
+      "url": "https://lh3.googleusercontent.com/WKIxue0nAIOYj00nGVoO4DTP9rU2na0qat5eoIuQTf6Fbp4mHHm-wbCes1Oo6K_6IdMl6Z_OCjGW_juCCf_jvQqaKw=s0"
+    },
+    "productionPlaces": []
+  },
+  "SK-A-4050": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-A-4050",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-A-4050"
+    },
+    "id": "en-SK-A-4050",
+    "objectNumber": "SK-A-4050",
+    "title": "Self-portrait as the Apostle Paul",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "Self-portrait as the Apostle Paul, Rembrandt van Rijn, 1661",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "58f00619-2e35-4d7d-a46d-0dcc6618f4ec",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 10201,
+      "height": 12064,
+      "url": "https://lh3.googleusercontent.com/NrCcfeY0r2F3M2hIQe5SLDRofR2tVzeOH18VjflOYGj88v4clb4v2H_VgCZR4nJhYsxxH9ATzfkL2tRqOWEK5-gPVEE=s0"
+    },
+    "headerImage": {
+      "guid": "aba7d9da-5d4b-4389-8347-c3de63c33d98",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 2276,
+      "height": 544,
+      "url": "https://lh3.googleusercontent.com/koQbNAoqV857feer4wJRVF-lbFzyNdvSsjgnXTTF3P3Dmgm2s_7noCVyqsxr1466YiIccueR0DpaU9-wPchhM0bIiQ=s0"
+    },
+    "productionPlaces": []
+  },
+  "SK-C-5": {
+    "links": {
+      "self": "http://www.rijksmuseum.nl/api/en/collection/SK-C-5",
+      "web": "http://www.rijksmuseum.nl/en/collection/SK-C-5"
+    },
+    "id": "en-SK-C-5",
+    "objectNumber": "SK-C-5",
+    "title": "The Night Watch Militia Company of District II under the Command of Captain Frans Banninck Cocq",
+    "hasImage": true,
+    "principalOrFirstMaker": "Rembrandt van Rijn",
+    "longTitle": "The Night Watch Militia Company of District II under the Command of Captain Frans Banninck Cocq, Rembrandt van Rijn, 1642",
+    "showImage": true,
+    "permitDownload": true,
+    "webImage": {
+      "guid": "bbd1fae8-4023-4859-8ed1-d38616aec96c",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 1,
+      "width": 14645,
+      "height": 12158,
+      "url": "https://lh3.googleusercontent.com/SsEIJWka3_cYRXXSE8VD3XNOgtOxoZhqW1uB6UFj78eg8gq3G4jAqL4Z_5KwA12aD7Leqp27F653aBkYkRBkEQyeKxfaZPyDx0O8CzWg=s0"
+    },
+    "headerImage": {
+      "guid": "29a2a516-f1d2-4713-9cbd-7a4458026057",
+      "offsetPercentageX": 0,
+      "offsetPercentageY": 0,
+      "width": 1920,
+      "height": 460,
+      "url": "https://lh3.googleusercontent.com/nAHNYM604vhPa1hbE_hBJw55JI01-ls0zCwHwvDEES38PpGyGHMgG_vaigVWSuK8GFkaxfn2Dmevw_Nmujn5dKW3jItgS6QaSI8VIsiH=s0"
+    },
+    "productionPlaces": [
+      "Amsterdam"
+    ]
+  }
+}
