@@ -212,22 +212,25 @@ track_event_once(
 # ============================================================
 # Sidebar (FORM to avoid rerun on every interaction)
 # ============================================================
-st.sidebar.header("🧭 Explore & Filter")
+sidebar = st.sidebar
+sidebar.header("🧭 Explore & Filter")
 
-with st.sidebar.form("search_form", clear_on_submit=False):
-    st.sidebar.subheader("Search")
-    search_term = st.sidebar.text_input(
-        "Search term", value="Rembrandt", help="Type artist name, title, theme, etc."
+with sidebar.form("search_form", clear_on_submit=False):
+    sidebar.subheader("Search")
+    search_term = sidebar.text_input(
+        "Search term",
+        value="Rembrandt",
+        help="Type artist name, title, theme, etc.",
     )
 
-    st.sidebar.subheader("Basic filters")
-    object_type = st.sidebar.selectbox(
+    sidebar.subheader("Basic filters")
+    object_type = sidebar.selectbox(
         "Object type",
         options=["Any", "painting", "print", "drawing", "sculpture", "photo", "other"],
         help="Filter by broad object category.",
     )
 
-    sort_label = st.sidebar.selectbox(
+    sort_label = sidebar.selectbox(
         "Sort results by",
         options=[
             "Relevance (default)",
@@ -244,58 +247,103 @@ with st.sidebar.form("search_form", clear_on_submit=False):
     }
     sort_by = sort_map[sort_label]
 
-    num_results = st.sidebar.slider(
-        "Number of results to request", min_value=6, max_value=30, value=12, step=3
+    num_results = sidebar.slider(
+        "Number of results to request",
+        min_value=6,
+        max_value=30,
+        value=12,
+        step=3,
     )
 
-    st.sidebar.subheader("Advanced filters")
-    year_min, year_max = st.sidebar.slider(
+    sidebar.subheader("Advanced filters")
+    year_min, year_max = sidebar.slider(
         "Year range (approx.)",
         min_value=1500,
         max_value=2025,
         value=(1600, 1900),
         step=10,
     )
-    st.sidebar.caption(
+    sidebar.caption(
         "Year range is applied after the API search, based on metadata returned by the Rijksmuseum API."
     )
 
-    st.sidebar.subheader("Text filters (optional)")
-    st.sidebar.caption("These filters search inside the artwork metadata: materials and production places.")
+    sidebar.subheader("Text filters (optional)")
+    sidebar.caption(
+        "These filters search inside the artwork metadata: materials and production places."
+    )
 
     material_presets = [
-        "(any)", "oil on canvas", "paper", "wood", "ink", "etching", "bronze", "silver", "porcelain"
+        "(any)",
+        "oil on canvas",
+        "paper",
+        "wood",
+        "ink",
+        "etching",
+        "bronze",
+        "silver",
+        "porcelain",
     ]
-    material_choice = st.sidebar.selectbox("Material contains", options=material_presets + ["Custom…"])
+    material_choice = sidebar.selectbox(
+        "Material contains",
+        options=material_presets + ["Custom…"],
+    )
     if material_choice == "(any)":
         material_filter = ""
     elif material_choice == "Custom…":
-        material_filter = st.sidebar.text_input("Custom material filter", value="")
+        material_filter = sidebar.text_input(
+            "Custom material filter",
+            value="",
+        )
     else:
         material_filter = material_choice
 
     place_presets = [
-        "(any)", "Amsterdam", "Haarlem", "Delft", "Utrecht", "The Hague", "Rotterdam",
-        "Leiden", "Antwerp", "Paris", "London", "Italy", "Germany", "Brazil"
+        "(any)",
+        "Amsterdam",
+        "Haarlem",
+        "Delft",
+        "Utrecht",
+        "The Hague",
+        "Rotterdam",
+        "Leiden",
+        "Antwerp",
+        "Paris",
+        "London",
+        "Italy",
+        "Germany",
+        "Brazil",
     ]
-    place_choice = st.sidebar.selectbox("Production place contains", options=place_presets + ["Custom…"])
+    place_choice = sidebar.selectbox(
+        "Production place contains",
+        options=place_presets + ["Custom…"],
+    )
     if place_choice == "(any)":
         place_filter = ""
     elif place_choice == "Custom…":
-        place_filter = st.sidebar.text_input("Custom production place filter", value="")
+        place_filter = sidebar.text_input(
+            "Custom production place filter",
+            value="",
+        )
     else:
         place_filter = place_choice
 
-    st.sidebar.markdown("---")
-    run_search = st.form_submit_button("🔍 Apply filters & search", use_container_width=True)
+    # Espaço extra antes do botão
+    sidebar.markdown("<br><br><br><br>", unsafe_allow_html=True)
 
-st.sidebar.caption(
+    # ✅ Botão correto: dentro do form e usando st.form_submit_button
+    run_search = st.form_submit_button(
+        "🔍 Apply filters & search",
+        use_container_width=True,
+    )
+
+sidebar.caption(
     "Artworks marked as **In my selection** remain saved across searches and sessions. "
     "If you do not want previous selections to appear pre-selected in new searches, "
     "clear your selection on the **My Selection** page."
 )
 
 object_type_param = None if object_type == "Any" else object_type
+
 # ============================================================
 # Main page
 # ============================================================
