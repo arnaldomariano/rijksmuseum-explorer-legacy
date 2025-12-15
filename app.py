@@ -1,9 +1,7 @@
 # app.py
 """
 Rijksmuseum Explorer - main page
-""
-
-
+"""
 import json
 import streamlit as st
 
