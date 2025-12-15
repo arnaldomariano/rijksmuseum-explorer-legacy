@@ -210,131 +210,134 @@ track_event_once(
 
 
 # ============================================================
-# Sidebar (FORM to avoid rerun on every interaction)
+# Sidebar (sem form, botão no final)
 # ============================================================
 sidebar = st.sidebar
 sidebar.header("🧭 Explore & Filter")
 
-with sidebar.form("search_form", clear_on_submit=False):
-    sidebar.subheader("Search")
-    search_term = sidebar.text_input(
-        "Search term",
-        value="Rembrandt",
-        help="Type artist name, title, theme, etc.",
-    )
+# --- Search ---
+sidebar.subheader("Search")
+search_term = sidebar.text_input(
+    "Search term",
+    value="Rembrandt",
+    help="Type artist name, title, theme, etc.",
+)
 
-    sidebar.subheader("Basic filters")
-    object_type = sidebar.selectbox(
-        "Object type",
-        options=["Any", "painting", "print", "drawing", "sculpture", "photo", "other"],
-        help="Filter by broad object category.",
-    )
+# --- Basic filters ---
+sidebar.subheader("Basic filters")
+object_type = sidebar.selectbox(
+    "Object type",
+    options=["Any", "painting", "print", "drawing", "sculpture", "photo", "other"],
+    help="Filter by broad object category.",
+)
 
-    sort_label = sidebar.selectbox(
-        "Sort results by",
-        options=[
-            "Relevance (default)",
-            "Artist name (A–Z)",
-            "Date (oldest → newest)",
-            "Date (newest → oldest)",
-        ],
-    )
-    sort_map = {
-        "Relevance (default)": "relevance",
-        "Artist name (A–Z)": "artist",
-        "Date (oldest → newest)": "chronologic",
-        "Date (newest → oldest)": "achronologic",
-    }
-    sort_by = sort_map[sort_label]
+sort_label = sidebar.selectbox(
+    "Sort results by",
+    options=[
+        "Relevance (default)",
+        "Artist name (A–Z)",
+        "Date (oldest → newest)",
+        "Date (newest → oldest)",
+    ],
+)
+sort_map = {
+    "Relevance (default)": "relevance",
+    "Artist name (A–Z)": "artist",
+    "Date (oldest → newest)": "chronologic",
+    "Date (newest → oldest)": "achronologic",
+}
+sort_by = sort_map[sort_label]
 
-    num_results = sidebar.slider(
-        "Number of results to request",
-        min_value=6,
-        max_value=30,
-        value=12,
-        step=3,
-    )
+num_results = sidebar.slider(
+    "Number of results to request",
+    min_value=6,
+    max_value=30,
+    value=12,
+    step=3,
+)
 
-    sidebar.subheader("Advanced filters")
-    year_min, year_max = sidebar.slider(
-        "Year range (approx.)",
-        min_value=1500,
-        max_value=2025,
-        value=(1600, 1900),
-        step=10,
-    )
-    sidebar.caption(
-        "Year range is applied after the API search, based on metadata returned by the Rijksmuseum API."
-    )
+# --- Advanced filters ---
+sidebar.subheader("Advanced filters")
+year_min, year_max = sidebar.slider(
+    "Year range (approx.)",
+    min_value=1500,
+    max_value=2025,
+    value=(1600, 1900),
+    step=10,
+)
+sidebar.caption(
+    "Year range is applied after the API search, based on metadata returned by the Rijksmuseum API."
+)
 
-    sidebar.subheader("Text filters (optional)")
-    sidebar.caption(
-        "These filters search inside the artwork metadata: materials and production places."
-    )
+# --- Text filters (optional) ---
+sidebar.subheader("Text filters (optional)")
+sidebar.caption(
+    "These filters search inside the artwork metadata: materials and production places."
+)
 
-    material_presets = [
-        "(any)",
-        "oil on canvas",
-        "paper",
-        "wood",
-        "ink",
-        "etching",
-        "bronze",
-        "silver",
-        "porcelain",
-    ]
-    material_choice = sidebar.selectbox(
-        "Material contains",
-        options=material_presets + ["Custom…"],
+material_presets = [
+    "(any)",
+    "oil on canvas",
+    "paper",
+    "wood",
+    "ink",
+    "etching",
+    "bronze",
+    "silver",
+    "porcelain",
+]
+material_choice = sidebar.selectbox(
+    "Material contains",
+    options=material_presets + ["Custom…"],
+)
+if material_choice == "(any)":
+    material_filter = ""
+elif material_choice == "Custom…":
+    material_filter = sidebar.text_input(
+        "Custom material filter",
+        value="",
     )
-    if material_choice == "(any)":
-        material_filter = ""
-    elif material_choice == "Custom…":
-        material_filter = sidebar.text_input(
-            "Custom material filter",
-            value="",
-        )
-    else:
-        material_filter = material_choice
+else:
+    material_filter = material_choice
 
-    place_presets = [
-        "(any)",
-        "Amsterdam",
-        "Haarlem",
-        "Delft",
-        "Utrecht",
-        "The Hague",
-        "Rotterdam",
-        "Leiden",
-        "Antwerp",
-        "Paris",
-        "London",
-        "Italy",
-        "Germany",
-        "Brazil",
-    ]
-    place_choice = sidebar.selectbox(
-        "Production place contains",
-        options=place_presets + ["Custom…"],
+place_presets = [
+    "(any)",
+    "Amsterdam",
+    "Haarlem",
+    "Delft",
+    "Utrecht",
+    "The Hague",
+    "Rotterdam",
+    "Leiden",
+    "Antwerp",
+    "Paris",
+    "London",
+    "Italy",
+    "Germany",
+    "Brazil",
+]
+place_choice = sidebar.selectbox(
+    "Production place contains",
+    options=place_presets + ["Custom…"],
+)
+if place_choice == "(any)":
+    place_filter = ""
+elif place_choice == "Custom…":
+    place_filter = sidebar.text_input(
+        "Custom production place filter",
+        value="",
     )
-    if place_choice == "(any)":
-        place_filter = ""
-    elif place_choice == "Custom…":
-        place_filter = sidebar.text_input(
-            "Custom production place filter",
-            value="",
-        )
-    else:
-        place_filter = place_choice
+else:
+    place_filter = place_choice
 
-    # Espaço extra antes do botão
-    sidebar.markdown("<br><br><br><br>", unsafe_allow_html=True)
+# linha separadora antes do botão
+sidebar.markdown("---")
 
-    # ✅ Botão correto: dentro do form e usando st.form_submit_button
-    run_search = st.form_submit_button(
-        "🔍 Apply filters & search",
-        use_container_width=True,
-    )
+# ✅ Botão de busca AGORA fica no final da sidebar
+run_search = sidebar.button(
+    "🔍 Apply filters & search",
+    use_container_width=True,
+)
 
 sidebar.caption(
     "Artworks marked as **In my selection** remain saved across searches and sessions. "
