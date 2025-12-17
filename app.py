@@ -208,14 +208,15 @@ track_event_once(
     props={"has_favorites": bool(favorites), "favorites_count": len(favorites)},
 )
 
-
 # ============================================================
 # Sidebar (sem form, botão no final)
 # ============================================================
 sidebar = st.sidebar
 sidebar.header("🧭 Explore & Filter")
 
-# --- Search ---
+# ------------------------
+# Search
+# ------------------------
 sidebar.subheader("Search")
 search_term = sidebar.text_input(
     "Search term",
@@ -223,7 +224,9 @@ search_term = sidebar.text_input(
     help="Type artist name, title, theme, etc.",
 )
 
-# --- Basic filters ---
+# ------------------------
+# Basic filters
+# ------------------------
 sidebar.subheader("Basic filters")
 object_type = sidebar.selectbox(
     "Object type",
@@ -256,7 +259,9 @@ num_results = sidebar.slider(
     step=3,
 )
 
-# --- Advanced filters ---
+# ------------------------
+# Advanced filters
+# ------------------------
 sidebar.subheader("Advanced filters")
 year_min, year_max = sidebar.slider(
     "Year range (approx.)",
@@ -269,10 +274,32 @@ sidebar.caption(
     "Year range is applied after the API search, based on metadata returned by the Rijksmuseum API."
 )
 
-# --- Text filters (optional) ---
+# ------------------------
+# Text filters (helper)
+# ------------------------
+sidebar.markdown(
+    """
+**Text filters (helper)**
+
+Text filters search inside the textual metadata of each artwork (title, long
+title, description and notes returned by the API).
+
+Use short keywords, for example:
+
+- `self-portrait`
+- `landscape`
+- `night watch`
+- `religious`
+"""
+)
+
+# ------------------------
+# Text filters (optional)
+# ------------------------
 sidebar.subheader("Text filters (optional)")
 sidebar.caption(
-    "These filters search inside the artwork metadata: materials and production places."
+    "These filters search inside the artwork metadata: materials and production places. "
+    "Leave as '(any)' if you do not want to filter by text."
 )
 
 material_presets = [
@@ -330,23 +357,24 @@ elif place_choice == "Custom…":
 else:
     place_filter = place_choice
 
-# linha separadora antes do botão
-sidebar.markdown("---")
+# pequeno espaço antes do botão
+sidebar.markdown("<div style='height: 0.75rem'></div>", unsafe_allow_html=True)
 
-# ✅ Botão de busca AGORA fica no final da sidebar
+# Botão FINAL da sidebar (sem form, sem box)
 run_search = sidebar.button(
     "🔍 Apply filters & search",
     use_container_width=True,
 )
 
+# aviso logo abaixo do botão
 sidebar.caption(
     "Artworks marked as **In my selection** remain saved across searches and sessions. "
     "If you do not want previous selections to appear pre-selected in new searches, "
     "clear your selection on the **My Selection** page."
 )
 
+# mapeia o tipo para o parâmetro da API
 object_type_param = None if object_type == "Any" else object_type
-
 # ============================================================
 # Main page
 # ============================================================
