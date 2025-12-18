@@ -1,3 +1,4 @@
+
 import json
 import io
 import csv
@@ -211,7 +212,7 @@ def inject_custom_css() -> None:
         """
         <style>
         .stApp { background-color: #111111; color: #f5f5f5; }
-        
+
         div.block-container {
             max-width: 95vw;
             padding-left: 2rem;
@@ -219,16 +220,14 @@ def inject_custom_css() -> None:
             padding-top: 1.2rem;
             padding-bottom: 2.5rem;
         }
-        
-    @media (min-width: 1400px) {
-        div.block-container {
-            padding-left: 3rem;
-            padding-right: 3rem;
-    }
-}
-        
-        
-        
+
+        @media (min-width: 1400px) {
+            div.block-container {
+                padding-left: 3rem;
+                padding-right: 3rem;
+            }
+        }
+
         section[data-testid="stSidebar"] {
             background-color: #181818 !important;
         }
@@ -323,7 +322,7 @@ def inject_custom_css() -> None:
             color: #aaaaaa;
             text-align: center;
         }
-        
+
         /* =========================================
            Gallery card micro-refinements
         ========================================= */
@@ -344,7 +343,7 @@ def inject_custom_css() -> None:
         .rijks-card:hover {
             background-color: rgba(255, 255, 255, 0.02);
         }
-        
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -610,7 +609,7 @@ st.caption(
 
 
 # ============================================================
-# Load favorites
+# Load favorites & notes
 # ============================================================
 if "favorites" not in st.session_state:
     if FAV_FILE.exists():
@@ -625,24 +624,20 @@ if "favorites" not in st.session_state:
 
 favorites: dict = st.session_state["favorites"]
 
-# Notes state
 load_notes()
 notes: dict = st.session_state.get("notes", {})
 
-# Compare state
-if "compare_from_selection" not in st.session_state:
-    st.session_state["compare_from_selection"] = []
-
-# UI state for showing comparison section only when user requests it
-if "show_compare" not in st.session_state:
-    st.session_state["show_compare"] = False
+# Flag usado para limpar TODOS os checkboxes de comparação
+if "clear_compare_flag" not in st.session_state:
+    st.session_state["clear_compare_flag"] = False
 
 # UI hint: show sidebar collapse tip only once
 if "sidebar_tip_dismissed" not in st.session_state:
     st.session_state["sidebar_tip_dismissed"] = False
 
 if "sidebar_tip_version" not in st.session_state:
-    st.session_state["sidebar_tip_version"] = 1  # bump this to show tip again in future updates
+    st.session_state["sidebar_tip_version"] = 1
+
 
 # ============================================================
 # Analytics — page view (only once per session)
@@ -716,9 +711,7 @@ default_max_year = stats["max_year"] if stats["max_year"] is not None else 2025
 with st.sidebar:
     st.markdown("## 🔧 My Selection Controls")
 
-    # ---------------------------------
     # One-time sidebar collapse hint
-    # ---------------------------------
     if not st.session_state.get("sidebar_tip_dismissed", False):
         with st.container():
             st.info(
@@ -729,9 +722,7 @@ with st.sidebar:
                 st.session_state["sidebar_tip_dismissed"] = True
                 st.rerun()
 
-    # -------------------------
     # Internal filters
-    # -------------------------
     with st.expander("🔍 Filter within selection", expanded=False):
         text_filter = st.text_input(
             "Search in title, artist, materials, techniques or places",
@@ -760,9 +751,7 @@ with st.sidebar:
             key="sb_object_type_filter",
         )
 
-    # -------------------------
     # High-level notes filter
-    # -------------------------
     total_artworks = stats["count"]
     total_with_notes = num_noted
     total_without_notes = total_artworks - total_with_notes
@@ -780,9 +769,7 @@ with st.sidebar:
         key="selection_filter_radio",
     )
 
-    # -------------------------
     # Notes keyword filter
-    # -------------------------
     note_filter = st.text_input(
         "Notes keyword filter (optional)",
         value="",
@@ -790,9 +777,7 @@ with st.sidebar:
     )
     note_filter_lower = note_filter.strip().lower()
 
-    # -------------------------
     # Gallery controls
-    # -------------------------
     st.markdown("### 🧭 Gallery")
 
     sort_label = st.selectbox(
@@ -1088,7 +1073,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ============================================================
-# Clear selection
+# Clear entire selection
 # ============================================================
 if st.button("Clear my entire selection"):
     st.session_state["favorites"] = {}
@@ -1098,21 +1083,19 @@ if st.button("Clear my entire selection"):
     except Exception:
         pass
 
-    st.session_state["compare_from_selection"] = []
-    st.session_state["detail_art_id"] = None
-    st.session_state["show_compare"] = False
+    # limpa qualquer checkbox de comparação
+    for key in list(st.session_state.keys()):
+        if key.startswith("cmp_from_sel_"):
+            del st.session_state[key]
 
+    st.session_state["detail_art_id"] = None
     st.success("Your selection has been cleared.")
     st.rerun()
 
 
 # ============================================================
-# Gallery + comparison logic
+# Gallery + comparison logic helpers
 # ============================================================
-# Base items = after metadata filters
-base_items = list(filtered_favorites.items())
-
-
 def get_year_for_sort(art: dict):
     dating = art.get("dating") or {}
     y = dating.get("year")
@@ -1135,6 +1118,18 @@ def has_note_text(obj_num: str) -> bool:
 def has_note(obj_id: str) -> bool:
     txt = notes.get(obj_id, "")
     return isinstance(txt, str) and txt.strip() != ""
+
+
+# Base items = after metadata filters
+base_items = list(filtered_favorites.items())
+
+# Se um "Clear comparison" foi pedido no run anterior,
+# limpamos todos os checkboxes AGORA, antes de criar widgets.
+if st.session_state.get("clear_compare_flag", False):
+    for key in list(st.session_state.keys()):
+        if key.startswith("cmp_from_sel_"):
+            del st.session_state[key]
+    st.session_state["clear_compare_flag"] = False
 
 
 # -----------------------------
@@ -1195,21 +1190,20 @@ if selection_filter_code == "with_notes":
 elif selection_filter_code == "without_notes":
     base_items = [(obj_num, art) for obj_num, art in base_items if not has_note(obj_num)]
 
-    # -----------------------------
-    # Summary after all filters
-    # -----------------------------
-    total_after_filters = len(base_items)
-    artists_after_filters = len(
-        {
-            (art.get("principalOrFirstMaker") or "Unknown artist")
-            for _, art in base_items
-        }
-    )
+# Summary after all filters
+total_after_filters = len(base_items)
+artists_after_filters = len(
+    {
+        (art.get("principalOrFirstMaker") or "Unknown artist")
+        for _, art in base_items
+    }
+)
 
-    st.caption(
-        f"Current view: **{total_after_filters}** artwork(s) "
-        f"from **{artists_after_filters}** artist(s) after all filters."
-    )
+st.caption(
+    f"Current view: **{total_after_filters}** artwork(s) "
+    f"from **{artists_after_filters}** artist(s) after all filters."
+)
+
 
 # -----------------------------
 # Empty case
@@ -1226,7 +1220,6 @@ else:
     # ---------------------------------------------------------
     filters_summary: list[str] = []
 
-    # Filtros de METADADOS (expander "Filter within your selection")
     if filters_active:
         if text_filter.strip():
             filters_summary.append(f"text contains '{text_filter.strip()}'")
@@ -1239,33 +1232,26 @@ else:
                 f"object type contains '{object_type_filter.strip()}'"
             )
 
-    # Filtro alto nível por notas (sidebar "Show in gallery")
     if selection_filter_code == "with_notes":
         filters_summary.append("only artworks with notes")
     elif selection_filter_code == "without_notes":
         filters_summary.append("only artworks without notes")
 
-    # Filtro por palavra-chave nas suas research notes
     if note_filter_lower:
         filters_summary.append(f"notes contain '{note_filter}'")
 
-    # Informação do modo de visualização
     filters_summary.append(
         "view: group by artist" if group_by_artist else "view: grid"
     )
 
-    # Mensagem final
     if filters_summary:
         st.caption("Active filters: " + " · ".join(filters_summary))
     else:
         st.caption("Active filters: none (full selection).")
 
     # =========================================================
-    # Shared card renderer
+    # Shared card renderer (NO side effects in session_state)
     # =========================================================
-    current_compare_ids = set(st.session_state.get("compare_from_selection", []))
-    new_compare_ids: set[str] = set()
-
     def render_cards(items: list[tuple[str, dict]], allow_compare: bool):
         for start_idx in range(0, len(items), cards_per_row):
             row_items = items[start_idx : start_idx + cards_per_row]
@@ -1347,14 +1333,11 @@ else:
 
                     if allow_compare:
                         cmp_key = f"cmp_from_sel_{obj_num}"
-                        default_checked = obj_num in current_compare_ids
-                        checked = st.checkbox(
+                        # Não passamos "value=" aqui — o Streamlit cuida do estado.
+                        st.checkbox(
                             "Select for comparison",
-                            value=default_checked,
                             key=cmp_key,
                         )
-                        if checked:
-                            new_compare_ids.add(obj_num)
 
                     if st.button("View details", key=f"detail_btn_{obj_num}"):
                         st.session_state["detail_art_id"] = obj_num
@@ -1382,10 +1365,10 @@ else:
                         except Exception:
                             pass
 
-                        current_cmp = set(st.session_state.get("compare_from_selection", []))
-                        if obj_num in current_cmp:
-                            current_cmp.remove(obj_num)
-                            st.session_state["compare_from_selection"] = list(current_cmp)
+                        # remove checkbox state associado, se existir
+                        cmp_key = f"cmp_from_sel_{obj_num}"
+                        if cmp_key in st.session_state:
+                            del st.session_state[cmp_key]
 
                         if st.session_state.get("detail_art_id") == obj_num:
                             st.session_state["detail_art_id"] = None
@@ -1409,12 +1392,11 @@ else:
                     st.markdown("</div>", unsafe_allow_html=True)
 
     # =========================================================
-    # MODE A) GROUP BY ARTIST (real researcher upgrade)
+    # MODE A) GROUP BY ARTIST
     # =========================================================
     if group_by_artist:
         st.markdown("### 👤 Artists overview")
 
-        # Controls specific to artist mode
         artists_per_page = st.select_slider(
             "Artists per page",
             options=[3, 5, 8, 12, 20],
@@ -1455,7 +1437,7 @@ else:
         # Sort artists A–Z
         artist_names = sorted(grouped.keys(), key=lambda x: x.lower())
 
-        # ---- Pagination by ARTIST ----
+        # Pagination by artist
         total_artists = len(artist_names)
         max_pages = max(1, (total_artists + artists_per_page - 1) // artists_per_page)
 
@@ -1476,7 +1458,6 @@ else:
             f"{total_artists} artist(s) and {len(base_items)} artwork(s) total after filters."
         )
 
-        # Helper sort inside artist
         def sort_items_for_artist(items: list[tuple[str, dict]]):
             if sort_within_artist == "Title (A–Z)":
                 items.sort(
@@ -1507,12 +1488,14 @@ else:
                     )
                 )
 
-        # Render each artist as expander
+        # Collect visible items (only artists in this page)
+        visible_items: list[tuple[str, dict]] = []
+
         for artist in page_artists:
             items = grouped.get(artist, [])
             sort_items_for_artist(items)
+            visible_items.extend(items)
 
-            # Mini-metrics
             years = [get_year_for_sort(a) for _, a in items]
             years = [y for y in years if isinstance(y, int)]
             min_y = min(years) if years else None
@@ -1531,37 +1514,37 @@ else:
             with st.expander(f"👤 {artist} — {header_line}", expanded=expand_artists):
                 render_cards(items, allow_compare=enable_compare_grouped)
 
-        # -----------------------------
-        # Compare panel for grouped mode
-        # -----------------------------
+        # Compare panel (grouped)
         if enable_compare_grouped:
-            st.session_state["compare_from_selection"] = list(new_compare_ids)
+            comparison_ids = [
+                obj_num
+                for obj_num, _ in visible_items
+                if st.session_state.get(f"cmp_from_sel_{obj_num}", False)
+            ]
+            num_selected = len(comparison_ids)
 
-            num_selected = len(st.session_state["compare_from_selection"])
             st.info(
-                f"Selected for comparison: **{num_selected}** "
+                f"Selected for comparison: {num_selected} "
                 "(please select exactly 2 artworks to compare)."
             )
 
             c1, c2 = st.columns([1, 1])
 
             with c1:
-                if st.button("Compare selected artworks", key="compare_grouped_btn"):
-                    st.session_state["show_compare"] = True
+                compare_clicked = st.button("Compare selected artworks", key="compare_grouped_btn")
 
             with c2:
-                if st.button("Clear comparison", key="clear_compare_grouped_btn"):
-                    st.session_state["compare_from_selection"] = []
-                    st.session_state["show_compare"] = False
-                    st.rerun()
+                clear_clicked = st.button("Clear comparison", key="clear_compare_grouped_btn")
 
-            if st.session_state.get("show_compare"):
-                ids = st.session_state["compare_from_selection"]
+            if clear_clicked:
+                st.session_state["clear_compare_flag"] = True
+                st.rerun()
 
-                if len(ids) != 2:
+            if compare_clicked:
+                if num_selected != 2:
                     st.warning("Please select exactly **two** artworks to compare.")
                 else:
-                    id_a, id_b = ids[0], ids[1]
+                    id_a, id_b = comparison_ids[0], comparison_ids[1]
                     art_a = favorites.get(id_a)
                     art_b = favorites.get(id_b)
 
@@ -1650,33 +1633,55 @@ else:
         st.markdown("### Select artworks from your selection to compare")
         render_cards(page_items, allow_compare=True)
 
-        st.session_state["compare_from_selection"] = list(new_compare_ids)
+        # Lista de selecionados APENAS desta página
+        comparison_ids = [
+            obj_num
+            for obj_num, _ in page_items
+            if st.session_state.get(f"cmp_from_sel_{obj_num}", False)
+        ]
+        num_selected = len(comparison_ids)
 
-        num_selected = len(st.session_state["compare_from_selection"])
-        st.info(
-            f"Selected for comparison: **{num_selected}** "
-            "(please select exactly 2 artworks to compare)."
-        )
+        if num_selected == 0:
+            st.info(
+                "Select artworks above using **Select for comparison** "
+                "to enable the comparison."
+            )
+        elif num_selected == 2:
+            st.success(
+                "Selected for comparison: **2 artworks**. "
+                "You can now click **Compare selected artworks** below."
+            )
+        else:
+            st.warning(
+                f"Selected for comparison: **{num_selected}** "
+                "(please select **exactly 2** artworks to compare)."
+            )
 
         c1, c2 = st.columns([1, 1])
 
         with c1:
-            if st.button("Compare selected artworks", key="compare_grid_btn"):
-                st.session_state["show_compare"] = True
+            compare_clicked = st.button(
+                "Compare selected artworks",
+                key="compare_grid_btn",
+                use_container_width=True,
+            )
 
         with c2:
-            if st.button("Clear comparison", key="clear_compare_grid_btn"):
-                st.session_state["compare_from_selection"] = []
-                st.session_state["show_compare"] = False
-                st.rerun()
+            clear_clicked = st.button(
+                "Clear comparison",
+                key="clear_compare_grid_btn",
+                use_container_width=True,
+            )
 
-        if st.session_state.get("show_compare"):
-            ids = st.session_state["compare_from_selection"]
+        if clear_clicked:
+            st.session_state["clear_compare_flag"] = True
+            st.rerun()
 
-            if len(ids) != 2:
+        if compare_clicked:
+            if num_selected != 2:
                 st.warning("Please select exactly **two** artworks to compare.")
             else:
-                id_a, id_b = ids[0], ids[1]
+                id_a, id_b = comparison_ids[0], comparison_ids[1]
                 art_a = favorites.get(id_a)
                 art_b = favorites.get(id_b)
 
@@ -1688,12 +1693,19 @@ else:
 
                     with col_a:
                         st.subheader("Artwork A")
-                        img_url_a = get_best_image_url(art_a)
+                        img_url_a = cached_best_image_url(art_a)
+
+                        # Artwork A
+                        img_url_a = cached_best_image_url(art_a)
                         if img_url_a:
                             try:
                                 st.image(img_url_a, use_container_width=True)
                             except Exception:
                                 st.write("Error displaying image.")
+                        else:
+                            st.caption(
+                                "No public image available for this artwork via API."
+                            )
 
                         title_a = art_a.get("title", "Untitled")
                         maker_a = art_a.get("principalOrFirstMaker", "Unknown artist")
@@ -1711,12 +1723,18 @@ else:
 
                     with col_b:
                         st.subheader("Artwork B")
-                        img_url_b = get_best_image_url(art_b)
+
+                        # Artwork B
+                        img_url_b = cached_best_image_url(art_b)
                         if img_url_b:
                             try:
                                 st.image(img_url_b, use_container_width=True)
                             except Exception:
                                 st.write("Error displaying image.")
+                        else:
+                            st.caption(
+                                "No public image available for this artwork via API."
+                            )
 
                         title_b = art_b.get("title", "Untitled")
                         maker_b = art_b.get("principalOrFirstMaker", "Unknown artist")
@@ -1732,6 +1750,7 @@ else:
                         if link_b:
                             st.markdown(f"[View on Rijksmuseum website]({link_b})")
 
+
 # ============================================================
 # Detail view + notes
 # ============================================================
@@ -1739,17 +1758,12 @@ detail_id = st.session_state.get("detail_art_id")
 if detail_id and detail_id in favorites:
     art = favorites[detail_id]
 
-    # ------------------------------------------------------------
-    # Analytics — artwork detail opened (once per artwork per session)
-    # ------------------------------------------------------------
     analytics_key = f"analytics_detail_opened_{detail_id}"
     if analytics_key not in st.session_state:
         st.session_state[analytics_key] = True
 
         dating = art.get("dating") or {}
-        year = dating.get("year")
-        if not year:
-            year = dating.get("presentingDate")
+        year = dating.get("year") or dating.get("presentingDate")
         title = art.get("title")
 
         track_event(
@@ -1840,7 +1854,6 @@ if detail_id and detail_id in favorites:
         save_notes()
         st.success("Notes saved successfully.")
 
-        # -------- Analytics: note saved --------
         track_event(
             event="note_saved",
             page="My_Selection",
@@ -1874,10 +1887,23 @@ if detail_id and detail_id in favorites:
         except Exception:
             pass
 
-        current_cmp = set(st.session_state.get("compare_from_selection", []))
-        if detail_id in current_cmp:
-            current_cmp.remove(detail_id)
-            st.session_state["compare_from_selection"] = list(current_cmp)
+        # remove checkbox state associado, se existir
+        cmp_key = f"cmp_from_sel_{detail_id}"
+        if cmp_key in st.session_state:
+            del st.session_state[cmp_key]
+
+        if "notes" in st.session_state:
+            st.session_state["notes"].pop(detail_id, None)
+            try:
+                with open(NOTES_FILE, "w", encoding="utf-8") as f:
+                    json.dump(
+                        st.session_state["notes"],
+                        f,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+            except Exception:
+                pass
 
         st.session_state["detail_art_id"] = None
 
