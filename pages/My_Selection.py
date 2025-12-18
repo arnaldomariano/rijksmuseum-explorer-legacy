@@ -627,6 +627,21 @@ favorites: dict = st.session_state["favorites"]
 load_notes()
 notes: dict = st.session_state.get("notes", {})
 
+# ------------------------------------------------------------
+# Flag para limpar TODOS os checkboxes de comparação
+# ------------------------------------------------------------
+if "clear_compare_flag" not in st.session_state:
+    st.session_state["clear_compare_flag"] = False
+
+# Se o flag vier ligado de um clique em "Clear comparison",
+# apagamos TODAS as chaves de comparação ANTES de criar qualquer checkbox.
+if st.session_state["clear_compare_flag"]:
+    for key in list(st.session_state.keys()):
+        if key.startswith("cmp_from_sel_"):
+            del st.session_state[key]
+    st.session_state["clear_compare_flag"] = False
+
+
 # UI hint: show sidebar collapse tip only once
 if "sidebar_tip_dismissed" not in st.session_state:
     st.session_state["sidebar_tip_dismissed"] = False
@@ -1115,19 +1130,6 @@ def has_note(obj_id: str) -> bool:
     txt = notes.get(obj_id, "")
     return isinstance(txt, str) and txt.strip() != ""
 
-# ------------------------------------------------------------
-# Flag para limpar TODOS os checkboxes de comparação
-# ------------------------------------------------------------
-if "clear_compare_flag" not in st.session_state:
-    st.session_state["clear_compare_flag"] = False
-
-# Se o flag vier ligado de um clique em "Clear comparison",
-# apagamos TODAS as chaves de comparação ANTES de criar qualquer checkbox.
-if st.session_state["clear_compare_flag"]:
-    for key in list(st.session_state.keys()):
-        if key.startswith("cmp_from_sel_"):
-            del st.session_state[key]
-    st.session_state["clear_compare_flag"] = False
 
 # ------------------------------------------------------------
 # Base items = favoritos após filtros de METADADOS
