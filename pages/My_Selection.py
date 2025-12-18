@@ -627,10 +627,6 @@ favorites: dict = st.session_state["favorites"]
 load_notes()
 notes: dict = st.session_state.get("notes", {})
 
-# Flag usado para limpar TODOS os checkboxes de comparação
-if "clear_compare_flag" not in st.session_state:
-    st.session_state["clear_compare_flag"] = False
-
 # UI hint: show sidebar collapse tip only once
 if "sidebar_tip_dismissed" not in st.session_state:
     st.session_state["sidebar_tip_dismissed"] = False
@@ -1119,21 +1115,27 @@ def has_note(obj_id: str) -> bool:
     txt = notes.get(obj_id, "")
     return isinstance(txt, str) and txt.strip() != ""
 
+# ------------------------------------------------------------
+# Flag para limpar TODOS os checkboxes de comparação
+# ------------------------------------------------------------
+if "clear_compare_flag" not in st.session_state:
+    st.session_state["clear_compare_flag"] = False
 
-# Base items = after metadata filters
-base_items = list(filtered_favorites.items())
-
-# Se um "Clear comparison" foi pedido no run anterior,
-# limpamos todos os checkboxes AGORA, antes de criar widgets.
-if st.session_state.get("clear_compare_flag", False):
+# Se o flag vier ligado de um clique em "Clear comparison",
+# apagamos TODAS as chaves de comparação ANTES de criar qualquer checkbox.
+if st.session_state["clear_compare_flag"]:
     for key in list(st.session_state.keys()):
         if key.startswith("cmp_from_sel_"):
             del st.session_state[key]
     st.session_state["clear_compare_flag"] = False
 
+# ------------------------------------------------------------
+# Base items = favoritos após filtros de METADADOS
+# ------------------------------------------------------------
+base_items: list[tuple[str, dict]] = list(filtered_favorites.items())
 
 # -----------------------------
-# Sorting (global)
+# Ordenação global
 # -----------------------------
 if sort_label == "Artist (A–Z)":
     base_items.sort(
@@ -1173,7 +1175,7 @@ elif sort_label == "Notes first":
     )
 
 # -----------------------------
-# Notes keyword filter
+# Filtro por palavra nas notes
 # -----------------------------
 if note_filter_lower:
     base_items = [
@@ -1183,14 +1185,16 @@ if note_filter_lower:
     ]
 
 # -----------------------------
-# High-level notes filter
+# Filtro de alto nível: com/sem notes
 # -----------------------------
 if selection_filter_code == "with_notes":
     base_items = [(obj_num, art) for obj_num, art in base_items if has_note(obj_num)]
 elif selection_filter_code == "without_notes":
     base_items = [(obj_num, art) for obj_num, art in base_items if not has_note(obj_num)]
 
-# Summary after all filters
+# ------------------------------------------------------------
+# Resumo após TODOS os filtros
+# ------------------------------------------------------------
 total_after_filters = len(base_items)
 artists_after_filters = len(
     {
@@ -1204,9 +1208,8 @@ st.caption(
     f"from **{artists_after_filters}** artist(s) after all filters."
 )
 
-
 # -----------------------------
-# Empty case
+# Caso vazio
 # -----------------------------
 if not base_items:
     st.info(
@@ -1216,7 +1219,7 @@ if not base_items:
 
 else:
     # ---------------------------------------------------------
-    # Small summary of active filters (for both modes)
+    # Resumo dos filtros ativos
     # ---------------------------------------------------------
     filters_summary: list[str] = []
 
@@ -1250,7 +1253,7 @@ else:
         st.caption("Active filters: none (full selection).")
 
     # =========================================================
-    # Shared card renderer (NO side effects in session_state)
+    # RENDERIZAÇÃO DOS CARDS (sem mexer em comparação aqui)
     # =========================================================
     def render_cards(items: list[tuple[str, dict]], allow_compare: bool):
         for start_idx in range(0, len(items), cards_per_row):
@@ -1333,7 +1336,6 @@ else:
 
                     if allow_compare:
                         cmp_key = f"cmp_from_sel_{obj_num}"
-                        # Não passamos "value=" aqui — o Streamlit cuida do estado.
                         st.checkbox(
                             "Select for comparison",
                             key=cmp_key,
@@ -1365,7 +1367,7 @@ else:
                         except Exception:
                             pass
 
-                        # remove checkbox state associado, se existir
+                        # limpa checkbox dessa obra, se existir
                         cmp_key = f"cmp_from_sel_{obj_num}"
                         if cmp_key in st.session_state:
                             del st.session_state[cmp_key]
@@ -1428,16 +1430,14 @@ else:
             key="enable_compare_grouped_toggle",
         )
 
-        # Build FULL grouping (before pagination)
+        # Agrupa por artista
         grouped: dict[str, list[tuple[str, dict]]] = {}
         for obj_num, art in base_items:
             artist = art.get("principalOrFirstMaker") or "Unknown artist"
             grouped.setdefault(artist, []).append((obj_num, art))
 
-        # Sort artists A–Z
         artist_names = sorted(grouped.keys(), key=lambda x: x.lower())
 
-        # Pagination by artist
         total_artists = len(artist_names)
         max_pages = max(1, (total_artists + artists_per_page - 1) // artists_per_page)
 
@@ -1488,7 +1488,6 @@ else:
                     )
                 )
 
-        # Collect visible items (only artists in this page)
         visible_items: list[tuple[str, dict]] = []
 
         for artist in page_artists:
@@ -1514,7 +1513,7 @@ else:
             with st.expander(f"👤 {artist} — {header_line}", expanded=expand_artists):
                 render_cards(items, allow_compare=enable_compare_grouped)
 
-        # Compare panel (grouped)
+        # Painel de comparação no modo agrupado
         if enable_compare_grouped:
             comparison_ids = [
                 obj_num
@@ -1536,7 +1535,12 @@ else:
             with c2:
                 clear_clicked = st.button("Clear comparison", key="clear_compare_grouped_btn")
 
+            with c2:
+                clear_clicked = st.button("Clear comparison", key="clear_compare_grouped_btn")
+
             if clear_clicked:
+                # Ligamos o flag; a limpeza REAL acontece no bloco lá de cima
+                # antes de criar os checkboxes.
                 st.session_state["clear_compare_flag"] = True
                 st.rerun()
 
@@ -1633,7 +1637,7 @@ else:
         st.markdown("### Select artworks from your selection to compare")
         render_cards(page_items, allow_compare=True)
 
-        # Lista de selecionados APENAS desta página
+        # Selecionados APENAS desta página
         comparison_ids = [
             obj_num
             for obj_num, _ in page_items
@@ -1674,6 +1678,7 @@ else:
             )
 
         if clear_clicked:
+            # Só liga o flag; quem apaga os estados é o bloco lá em cima
             st.session_state["clear_compare_flag"] = True
             st.rerun()
 
@@ -1693,9 +1698,6 @@ else:
 
                     with col_a:
                         st.subheader("Artwork A")
-                        img_url_a = cached_best_image_url(art_a)
-
-                        # Artwork A
                         img_url_a = cached_best_image_url(art_a)
                         if img_url_a:
                             try:
@@ -1723,8 +1725,6 @@ else:
 
                     with col_b:
                         st.subheader("Artwork B")
-
-                        # Artwork B
                         img_url_b = cached_best_image_url(art_b)
                         if img_url_b:
                             try:
@@ -1749,7 +1749,6 @@ else:
                         st.write(f"**Object ID:** {id_b}")
                         if link_b:
                             st.markdown(f"[View on Rijksmuseum website]({link_b})")
-
 
 # ============================================================
 # Detail view + notes
