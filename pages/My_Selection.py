@@ -649,7 +649,6 @@ if "sidebar_tip_dismissed" not in st.session_state:
 if "sidebar_tip_version" not in st.session_state:
     st.session_state["sidebar_tip_version"] = 1
 
-
 # ============================================================
 # Analytics — page view (only once per session)
 # ============================================================
