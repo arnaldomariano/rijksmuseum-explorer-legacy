@@ -628,18 +628,14 @@ load_notes()
 notes: dict = st.session_state.get("notes", {})
 
 # ------------------------------------------------------------
-# Flag para limpar TODOS os checkboxes de comparação
+# Geração de keys para checkboxes de comparação
+# (sempre que aumentamos esse número, TODOS os checkboxes
+# são recriados "do zero", desmarcados)
 # ------------------------------------------------------------
-if "clear_compare_flag" not in st.session_state:
-    st.session_state["clear_compare_flag"] = False
+if "cmp_key_generation" not in st.session_state:
+    st.session_state["cmp_key_generation"] = 0
 
-# Se o flag vier ligado de um clique em "Clear comparison",
-# apagamos TODAS as chaves de comparação ANTES de criar qualquer checkbox.
-if st.session_state["clear_compare_flag"]:
-    for key in list(st.session_state.keys()):
-        if key.startswith("cmp_from_sel_"):
-            del st.session_state[key]
-    st.session_state["clear_compare_flag"] = False
+current_cmp_gen = st.session_state["cmp_key_generation"]
 
 
 # UI hint: show sidebar collapse tip only once
@@ -1093,10 +1089,8 @@ if st.button("Clear my entire selection"):
     except Exception:
         pass
 
-    # limpa qualquer checkbox de comparação
-    for key in list(st.session_state.keys()):
-        if key.startswith("cmp_from_sel_"):
-            del st.session_state[key]
+    # ao limpar tudo, também reiniciamos a geração dos checkboxes de comparação
+    st.session_state["cmp_key_generation"] = st.session_state.get("cmp_key_generation", 0) + 1
 
     st.session_state["detail_art_id"] = None
     st.success("Your selection has been cleared.")
@@ -1336,7 +1330,7 @@ else:
                             st.write(f"**Production place(s): {', '.join(production_places)}")
 
                     if allow_compare:
-                        cmp_key = f"cmp_from_sel_{obj_num}"
+                        cmp_key = f"cmp_from_sel_{current_cmp_gen}_{obj_num}"
                         st.checkbox(
                             "Select for comparison",
                             key=cmp_key,
@@ -1368,10 +1362,6 @@ else:
                         except Exception:
                             pass
 
-                        # limpa checkbox dessa obra, se existir
-                        cmp_key = f"cmp_from_sel_{obj_num}"
-                        if cmp_key in st.session_state:
-                            del st.session_state[cmp_key]
 
                         if st.session_state.get("detail_art_id") == obj_num:
                             st.session_state["detail_art_id"] = None
@@ -1516,10 +1506,11 @@ else:
 
         # Painel de comparação no modo agrupado
         if enable_compare_grouped:
+            # Selecionados APENAS dos artistas visíveis nesta página
             comparison_ids = [
                 obj_num
                 for obj_num, _ in visible_items
-                if st.session_state.get(f"cmp_from_sel_{obj_num}", False)
+                if st.session_state.get(f"cmp_from_sel_{current_cmp_gen}_{obj_num}", False)
             ]
             num_selected = len(comparison_ids)
 
@@ -1531,18 +1522,22 @@ else:
             c1, c2 = st.columns([1, 1])
 
             with c1:
-                compare_clicked = st.button("Compare selected artworks", key="compare_grouped_btn")
+                compare_clicked = st.button(
+                    "Compare selected artworks",
+                    key="compare_grouped_btn",
+                    use_container_width=True,
+                )
 
             with c2:
-                clear_clicked = st.button("Clear comparison", key="clear_compare_grouped_btn")
-
-            with c2:
-                clear_clicked = st.button("Clear comparison", key="clear_compare_grouped_btn")
+                clear_clicked = st.button(
+                    "Clear comparison",
+                    key="clear_compare_grouped_btn",
+                    use_container_width=True,
+                )
 
             if clear_clicked:
-                # Ligamos o flag; a limpeza REAL acontece no bloco lá de cima
-                # antes de criar os checkboxes.
-                st.session_state["clear_compare_flag"] = True
+                # Aumenta a geração -> todos os checkboxes ganham novas keys
+                st.session_state["cmp_key_generation"] = st.session_state.get("cmp_key_generation", 0) + 1
                 st.rerun()
 
             if compare_clicked:
@@ -1639,10 +1634,11 @@ else:
         render_cards(page_items, allow_compare=True)
 
         # Selecionados APENAS desta página
+        # Selecionados APENAS desta página
         comparison_ids = [
             obj_num
             for obj_num, _ in page_items
-            if st.session_state.get(f"cmp_from_sel_{obj_num}", False)
+            if st.session_state.get(f"cmp_from_sel_{current_cmp_gen}_{obj_num}", False)
         ]
         num_selected = len(comparison_ids)
 
@@ -1679,8 +1675,8 @@ else:
             )
 
         if clear_clicked:
-            # Só liga o flag; quem apaga os estados é o bloco lá em cima
-            st.session_state["clear_compare_flag"] = True
+            # Aumenta a geração -> todos os checkboxes ganham novas keys
+            st.session_state["cmp_key_generation"] = st.session_state.get("cmp_key_generation", 0) + 1
             st.rerun()
 
         if compare_clicked:
@@ -1886,11 +1882,6 @@ if detail_id and detail_id in favorites:
                 json.dump(favorites, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
-
-        # remove checkbox state associado, se existir
-        cmp_key = f"cmp_from_sel_{detail_id}"
-        if cmp_key in st.session_state:
-            del st.session_state[cmp_key]
 
         if "notes" in st.session_state:
             st.session_state["notes"].pop(detail_id, None)
