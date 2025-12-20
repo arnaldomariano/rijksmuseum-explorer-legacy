@@ -259,6 +259,22 @@ num_results = sidebar.slider(
     step=3,
 )
 
+result_page = sidebar.number_input(
+    "Result page",
+    min_value=1,
+    value=1,
+    step=1,
+    help="Page of results to request from the API (1 = first page).",
+)
+
+# Detecta mudança de página para disparar nova busca automaticamente
+if "last_result_page" not in st.session_state:
+    st.session_state["last_result_page"] = int(result_page)
+
+page_changed = int(result_page) != int(st.session_state["last_result_page"])
+if page_changed:
+    st.session_state["last_result_page"] = int(result_page)
+
 # ------------------------
 # Advanced filters
 # ------------------------
@@ -405,20 +421,24 @@ with st.expander("ℹ️ How the search works (quick guide)", expanded=False):
         """
     )
 
-st.markdown(
-    f'<div class="rijks-summary-pill">Saved artworks: <strong>{len(favorites)}</strong></div>',
+# placeholder para o contador de obras salvas (fica visualmente aqui em cima)
+saved_pill_placeholder = st.empty()
+saved_pill_placeholder.markdown(
+    f'<div class="rijks-summary-pill">Saved artworks: '
+    f'<strong>{len(favorites)}</strong></div>',
     unsafe_allow_html=True,
 )
 
 meta = st.session_state.get("search_meta", {})
 if meta.get("filtered_count") is not None and meta.get("total_found") is not None:
-    st.caption(f"Displaying **{meta['filtered_count']}** of **{meta['total_found']}** artwork(s) that match your current filters.")
-
+    st.caption(
+        f"Displaying **{meta['filtered_count']}** of **{meta['total_found']}** artwork(s) that match your current filters."
+    )
 
 # ============================================================
-# Search execution (only when form submitted)
+# Search execution (when button or page changes)
 # ============================================================
-if run_search:
+if run_search or page_changed:
     if not search_term.strip():
         st.warning("Please enter a search term before running the search.")
         st.session_state["results"] = []
@@ -426,15 +446,18 @@ if run_search:
     else:
         try:
             with st.spinner("Searching artworks in the Rijksmuseum collection..."):
+                # agora pedimos também a "page" da API
                 raw_results, total_found = search_artworks(
                     query=search_term,
                     object_type=object_type_param,
                     sort=sort_by,
                     page_size=num_results,
+                    page=result_page,
                 )
 
             filtered_results = [
-                art for art in (raw_results or [])
+                art
+                for art in (raw_results or [])
                 if passes_metadata_filters(
                     art,
                     year_min=year_min,
@@ -445,11 +468,21 @@ if run_search:
             ]
 
             st.session_state["results"] = filtered_results
+            # guardamos também page e page_size em meta
             st.session_state["search_meta"] = {
                 "total_found": total_found,
                 "api_count": len(raw_results or []),
                 "filtered_count": len(filtered_results),
+                "page": int(result_page),
+                "page_size": int(num_results),
             }
+
+            # garante que o pill está sincronizado com o favorites atual
+            saved_pill_placeholder.markdown(
+                f'<div class="rijks-summary-pill">Saved artworks: '
+                f'<strong>{len(st.session_state.get("favorites", {}))}</strong></div>',
+                unsafe_allow_html=True,
+            )
 
         except RuntimeError as e:
             st.error(str(e))
@@ -461,8 +494,6 @@ if run_search:
             st.session_state["search_meta"] = {}
 
 results = st.session_state.get("results", [])
-
-
 # ============================================================
 # Results grid
 # ============================================================
@@ -475,16 +506,16 @@ if results:
         for col, art in zip(cols, row_items):
             with col:
                 st.markdown('<div class="rijks-card">', unsafe_allow_html=True)
-
                 object_number = art.get("objectNumber")
                 title = art.get("title", "Untitled")
                 maker = art.get("principalOrFirstMaker", "Unknown artist")
                 web_link = art.get("links", {}).get("web")
 
-                is_fav = object_number in favorites if object_number else False
+                # notas (independente de estar favoritada ou não)
                 note_text = notes.get(object_number, "") if object_number else ""
                 has_notes = isinstance(note_text, str) and note_text.strip() != ""
 
+                # imagem
                 img_url = get_best_image_url(art)
                 if img_url:
                     st.image(img_url, width="stretch")
@@ -499,17 +530,66 @@ if results:
                         unsafe_allow_html=True,
                     )
 
-                st.markdown(f'<div class="rijks-card-title">{title}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="rijks-card-caption">{maker}</div>', unsafe_allow_html=True)
+                # título e autor
+                st.markdown(
+                    f'<div class="rijks-card-title">{title}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="rijks-card-caption">{maker}</div>',
+                    unsafe_allow_html=True,
+                )
 
+                # --- checkbox + atualização de favorites (SEM DELAY) ---
+                if object_number:
+                    was_fav = object_number in favorites
+
+                    checked = st.checkbox(
+                        "In my selection",
+                        value=was_fav,
+                        key=f"fav_{object_number}",
+                    )
+
+                    # Se o usuário mudou o estado, atualizamos o favorites na hora
+                    if checked != was_fav:
+                        if checked:
+                            favorites[object_number] = art
+                        else:
+                            favorites.pop(object_number, None)
+
+                        st.session_state["favorites"] = favorites
+                        save_favorites()
+
+                        # atualiza o pill lá em cima com o valor mais recente
+                        saved_pill_placeholder.markdown(
+                            f'<div class="rijks-summary-pill">Saved artworks: '
+                            f'<strong>{len(favorites)}</strong></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    is_fav = checked
+                else:
+                    is_fav = False
+
+                # badges usando o estado ATUAL (sem atraso)
                 badge_parts = []
                 if is_fav:
-                    badge_parts.append('<span class="rijks-badge rijks-badge-primary">⭐ In my selection</span>')
+                    badge_parts.append(
+                        '<span class="rijks-badge rijks-badge-primary">⭐ In my selection</span>'
+                    )
                 if has_notes:
-                    badge_parts.append('<span class="rijks-badge rijks-badge-secondary">📝 Notes</span>')
+                    badge_parts.append(
+                        '<span class="rijks-badge rijks-badge-secondary">📝 Notes</span>'
+                    )
                 if badge_parts:
-                    st.markdown('<div class="rijks-badge-row">' + " ".join(badge_parts) + "</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        '<div class="rijks-badge-row">'
+                        + " ".join(badge_parts)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
 
+                # metadados de data / ID / link
                 dating = art.get("dating") or {}
                 presenting_date = dating.get("presentingDate")
                 year = extract_year(dating) if dating else None
@@ -522,17 +602,6 @@ if results:
                 if web_link:
                     st.markdown(f"[View on Rijksmuseum website]({web_link})")
 
-                if object_number:
-                    checked = st.checkbox("In my selection", value=is_fav, key=f"fav_{object_number}")
-                    if checked and not is_fav:
-                        favorites[object_number] = art
-                        st.session_state["favorites"] = favorites
-                        save_favorites()
-                    elif not checked and is_fav:
-                        favorites.pop(object_number, None)
-                        st.session_state["favorites"] = favorites
-                        save_favorites()
-
                 st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.info(
@@ -540,4 +609,5 @@ else:
         "“Apply filters & search” to retrieve artworks from the Rijksmuseum API."
     )
 
+# footer uma única vez no fim da página
 show_footer()

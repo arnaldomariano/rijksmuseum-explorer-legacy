@@ -74,6 +74,7 @@ def search_artworks(
     object_type: str | None = None,
     sort: str = "relevance",
     page_size: int = 12,
+    page: int = 1,
 ):
     """
     Query the Rijksmuseum API and return a list of artworks and the total count.
@@ -89,6 +90,8 @@ def search_artworks(
         'relevance', 'artist', 'chronologic', 'achronologic'
     page_size : int
         Number of results to retrieve (API parameter 'ps').
+    page : int
+        Page of results to request (API parameter 'p'). 1 = first page.
 
     Returns
     -------
@@ -100,7 +103,8 @@ def search_artworks(
         "key": API_KEY,
         "q": query,
         "ps": page_size,
-        "s": sort,     # ← SORTING REAL
+        "s": sort,       # ordenação real via API
+        "p": int(page),  # paginação via API
     }
 
     if object_type:
