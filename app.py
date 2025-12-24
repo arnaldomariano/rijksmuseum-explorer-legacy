@@ -423,17 +423,13 @@ with st.expander("ℹ️ How the search works (quick guide)", expanded=False):
 
 # placeholder para o contador de obras salvas (fica visualmente aqui em cima)
 saved_pill_placeholder = st.empty()
+# desenha o pill já com o número ATUAL de favoritos
 saved_pill_placeholder.markdown(
     f'<div class="rijks-summary-pill">Saved artworks: '
     f'<strong>{len(favorites)}</strong></div>',
     unsafe_allow_html=True,
 )
 
-meta = st.session_state.get("search_meta", {})
-if meta.get("filtered_count") is not None and meta.get("total_found") is not None:
-    st.caption(
-        f"Displaying **{meta['filtered_count']}** of **{meta['total_found']}** artwork(s) that match your current filters."
-    )
 
 # ============================================================
 # Search execution (when button or page changes)
@@ -494,6 +490,15 @@ if run_search or page_changed:
             st.session_state["search_meta"] = {}
 
 results = st.session_state.get("results", [])
+
+# info de quantas obras estamos mostrando (sempre usando o meta ATUAL)
+meta = st.session_state.get("search_meta", {})
+if meta.get("filtered_count") is not None and meta.get("total_found") is not None:
+    st.caption(
+        f"Displaying **{meta['filtered_count']}** of **{meta['total_found']}** artwork(s) "
+        f"that match your current filters."
+    )
+
 # ============================================================
 # Results grid
 # ============================================================
@@ -560,7 +565,7 @@ if results:
                         st.session_state["favorites"] = favorites
                         save_favorites()
 
-                        # atualiza o pill lá em cima com o valor mais recente
+                        # atualiza o pill lá em cima
                         saved_pill_placeholder.markdown(
                             f'<div class="rijks-summary-pill">Saved artworks: '
                             f'<strong>{len(favorites)}</strong></div>',
@@ -603,11 +608,34 @@ if results:
                     st.markdown(f"[View on Rijksmuseum website]({web_link})")
 
                 st.markdown("</div>", unsafe_allow_html=True)
-else:
-    st.info(
-        "No artworks to display yet. Use the filters on the left and click "
-        "“Apply filters & search” to retrieve artworks from the Rijksmuseum API."
-    )
 
-# footer uma única vez no fim da página
+                # --- Atualiza o contador de obras salvas com o estado MAIS RECENTE ---
+                favorites = st.session_state.get("favorites", {})
+                saved_pill_placeholder.markdown(
+                    f'<div class="rijks-summary-pill">Saved artworks: '
+                    f'<strong>{len(favorites)}</strong></div>',
+                    unsafe_allow_html=True,
+                )
+
+# >>> AQUI fecha o if results, e só depois vem o else global <<<
+else:
+    # verificamos se a API encontrou algo mas os filtros locais zeraram
+    meta = st.session_state.get("search_meta", {})
+    total_found = meta.get("total_found", 0)
+
+    if total_found and total_found > 0:
+        # A API encontrou obras, mas NENHUMA passou nos filtros locais
+        st.warning(
+            "The Rijksmuseum API found "
+            f"**{total_found} artwork(s)** for your search term, "
+            "but none match your **local filters** (year range, material or production place). "
+            "Try broadening these filters to see the artworks."
+        )
+    else:
+        # Nenhuma obra encontrada nem pela API
+        st.info(
+            "No artworks to display yet. Use the filters on the left and click "
+            "“Apply filters & search” to retrieve artworks from the Rijksmuseum API."
+        )
+
 show_footer()
