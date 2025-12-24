@@ -45,8 +45,36 @@ def extract_year(dating: dict) -> int | None:
 
 
 # -----------------------------------------------------------
-# Best image URL helper
+# Best image URL helper (com normalização)
 # -----------------------------------------------------------
+def _normalize_rijks_url(url: str | None) -> str | None:
+    """
+    Normaliza URLs vindas da API do Rijksmuseum.
+
+    - Se já for http/https → devolve como está.
+    - Se começar com '//' → prefixa com 'https:'.
+    - Se começar com '/'  → prefixa com domínio do Rijksmuseum.
+    - Caso contrário, tenta montar uma URL absoluta básica.
+    """
+    if not url:
+        return None
+
+    url = url.strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+
+    if url.startswith("//"):
+        # URL "protocol-relative" (começa com //)
+        return "https:" + url
+
+    if url.startswith("/"):
+        # caminho absoluto no site do Rijksmuseum
+        return "https://www.rijksmuseum.nl" + url
+
+    # último caso: algo tipo 'Static/Images/...'
+    return "https://www.rijksmuseum.nl/" + url.lstrip("./")
+
+
 def get_best_image_url(art: dict) -> str | None:
     """
     Returns the best available image URL from the API result, if any.
@@ -55,16 +83,21 @@ def get_best_image_url(art: dict) -> str | None:
     if not art:
         return None
 
+    # tenta primeiro webImage
     web_img = art.get("webImage")
-    if web_img and web_img.get("url"):
-        return web_img["url"]
+    if isinstance(web_img, dict):
+        normalized = _normalize_rijks_url(web_img.get("url"))
+        if normalized:
+            return normalized
 
+    # depois headerImage
     header_img = art.get("headerImage")
-    if header_img and header_img.get("url"):
-        return header_img["url"]
+    if isinstance(header_img, dict):
+        normalized = _normalize_rijks_url(header_img.get("url"))
+        if normalized:
+            return normalized
 
     return None
-
 
 # -----------------------------------------------------------
 # Main search function (SORTING REAL via API)

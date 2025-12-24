@@ -414,10 +414,23 @@ st.caption(
 with st.expander("ℹ️ How the search works (quick guide)", expanded=False):
     st.markdown(
         """
-- **Search term** → sent to the Rijksmuseum API as `q`
-- **Object type** → high-level category
-- **Sort by** → official API sort modes
-- **Advanced filters** → applied after API (year/material/place)
+- **Search term** → sent to the Rijksmuseum API as `q`.
+- **Object type** → high-level category passed to the API (`type`).
+- **Sort by** → official API sort modes (`relevance`, `artist`, `chronologic`, `achronologic`).
+- **Advanced filters (year, material, production place)** → applied **locally** on top of the API results.
+
+**Why can the header say “323 artworks” but the grid be empty?**
+
+- The Rijksmuseum API may find many artworks that match your search term.
+- Then the app applies your local filters (year range, *Material contains*, *Production place contains*).
+- The line `Displaying A of B artwork(s)` means:
+    - **B** = artworks reported by the API.
+    - **A** = artworks that still match your **local filters**.
+- If **A = 0** but **B > 0**, try broadening the local filters:
+    - expand the year range,
+    - set *Material contains* to **(any)**,
+    - set *Production place contains* to **(any)**,
+    - or relax one filter at a time to see what is excluding the artworks.
         """
     )
 
@@ -523,7 +536,19 @@ if results:
                 # imagem
                 img_url = get_best_image_url(art)
                 if img_url:
-                    st.image(img_url, width="stretch")
+                    try:
+                        st.image(img_url, width="stretch")
+                    except Exception:
+                        # Se der qualquer erro ao carregar a imagem, mostramos uma mensagem amigável
+                        st.write("Error displaying image from API.")
+                        st.markdown(
+                            """
+                            <div class="rijks-no-image-msg">
+                            No public image is available via the API for this artwork.
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
                 else:
                     st.write("No valid image available via API.")
                     st.markdown(
@@ -534,7 +559,6 @@ if results:
                         """,
                         unsafe_allow_html=True,
                     )
-
                 # título e autor
                 st.markdown(
                     f'<div class="rijks-card-title">{title}</div>',
@@ -617,25 +641,20 @@ if results:
                     unsafe_allow_html=True,
                 )
 
-# >>> AQUI fecha o if results, e só depois vem o else global <<<
 else:
-    # verificamos se a API encontrou algo mas os filtros locais zeraram
     meta = st.session_state.get("search_meta", {})
     total_found = meta.get("total_found", 0)
 
     if total_found and total_found > 0:
-        # A API encontrou obras, mas NENHUMA passou nos filtros locais
         st.warning(
             "The Rijksmuseum API found "
             f"**{total_found} artwork(s)** for your search term, "
-            "but none match your **local filters** (year range, material or production place). "
+            "but none match your **local filters** "
+            "(year range, material or production place). "
             "Try broadening these filters to see the artworks."
         )
     else:
-        # Nenhuma obra encontrada nem pela API
         st.info(
             "No artworks to display yet. Use the filters on the left and click "
             "“Apply filters & search” to retrieve artworks from the Rijksmuseum API."
         )
-
-show_footer()
