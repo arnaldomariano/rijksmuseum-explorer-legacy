@@ -3,6 +3,8 @@
 Rijksmuseum Explorer - main page
 """
 import json
+import io
+import csv
 import streamlit as st
 
 from app_paths import FAV_FILE, NOTES_FILE, HERO_IMAGE_PATH
@@ -513,8 +515,102 @@ if meta.get("filtered_count") is not None and meta.get("total_found") is not Non
     )
 
 # ============================================================
-# Results grid
+# Results grid + selection tools
 # ============================================================
+
+results = st.session_state.get("results", [])
+
+# ============================================================
+# Selection tools for current results
+# ============================================================
+if results:
+    st.markdown("### Selection tools for current results")
+
+    col_add, col_remove = st.columns(2)
+
+    # -------------------------------
+    # ADD ALL results to selection
+    # -------------------------------
+    with col_add:
+        add_all_clicked = st.button(
+            "⭐ Add ALL results to my selection",
+            use_container_width=True,
+            key="btn_add_all_results",
+        )
+
+    # -------------------------------
+    # REMOVE ALL results from selection
+    # -------------------------------
+    with col_remove:
+        remove_all_clicked = st.button(
+            "🗑️ Remove ALL results from my selection",
+            use_container_width=True,
+            key="btn_remove_all_results",
+        )
+
+    # 🔹 AVISO IMPORTANTE SOBRE ESSES BOTÕES
+    st.caption(
+        "Note: these buttons update your **global selection** "
+        "(the same one shown on the *My Selection* page). "
+        "If you want to remove only a few artworks, use the individual "
+        "“In my selection” checkboxes in each card instead."
+    )
+
+    # Lógica ADD ALL
+    if add_all_clicked:
+        added = 0
+        for art in results:
+            obj_num = art.get("objectNumber")
+            if not obj_num:
+                continue
+            if obj_num not in favorites:
+                favorites[obj_num] = art
+                added += 1
+            st.session_state[f"fav_{obj_num}"] = True
+
+        st.session_state["favorites"] = favorites
+        save_favorites()
+
+        saved_pill_placeholder.markdown(
+            f'<div class="rijks-summary-pill">Saved artworks: '
+            f'<strong>{len(favorites)}</strong></div>',
+            unsafe_allow_html=True,
+        )
+
+        if added > 0:
+            st.success(f"Added {added} artwork(s) to your selection.")
+        else:
+            st.info("All artworks in the current results were already in your selection.")
+
+    # Lógica REMOVE ALL
+    if remove_all_clicked:
+        removed = 0
+        for art in results:
+            obj_num = art.get("objectNumber")
+            if not obj_num:
+                continue
+            if obj_num in favorites:
+                favorites.pop(obj_num)
+                removed += 1
+            st.session_state[f"fav_{obj_num}"] = False
+
+        st.session_state["favorites"] = favorites
+        save_favorites()
+
+        saved_pill_placeholder.markdown(
+            f'<div class="rijks-summary-pill">Saved artworks: '
+            f'<strong>{len(favorites)}</strong></div>',
+            unsafe_allow_html=True,
+        )
+
+        if removed > 0:
+            st.success(f"Removed {removed} artwork(s) from your selection.")
+        else:
+            st.info("None of the current results were in your selection.")
+
+# ------------------------------------------------------------
+# Results grid (cards)
+# ------------------------------------------------------------
 if results:
     cards_per_row = 3
     for start_idx in range(0, len(results), cards_per_row):
@@ -529,17 +625,14 @@ if results:
                 maker = art.get("principalOrFirstMaker", "Unknown artist")
                 web_link = art.get("links", {}).get("web")
 
-                # notas (independente de estar favoritada ou não)
                 note_text = notes.get(object_number, "") if object_number else ""
                 has_notes = isinstance(note_text, str) and note_text.strip() != ""
 
-                # imagem
                 img_url = get_best_image_url(art)
                 if img_url:
                     try:
                         st.image(img_url, width="stretch")
                     except Exception:
-                        # Se der qualquer erro ao carregar a imagem, mostramos uma mensagem amigável
                         st.write("Error displaying image from API.")
                         st.markdown(
                             """
@@ -559,7 +652,7 @@ if results:
                         """,
                         unsafe_allow_html=True,
                     )
-                # título e autor
+
                 st.markdown(
                     f'<div class="rijks-card-title">{title}</div>',
                     unsafe_allow_html=True,
@@ -569,27 +662,23 @@ if results:
                     unsafe_allow_html=True,
                 )
 
-                # --- checkbox + atualização de favorites (SEM DELAY) ---
+                # checkbox + favorites
                 if object_number:
                     was_fav = object_number in favorites
-
                     checked = st.checkbox(
                         "In my selection",
                         value=was_fav,
                         key=f"fav_{object_number}",
                     )
 
-                    # Se o usuário mudou o estado, atualizamos o favorites na hora
                     if checked != was_fav:
                         if checked:
                             favorites[object_number] = art
                         else:
                             favorites.pop(object_number, None)
-
                         st.session_state["favorites"] = favorites
                         save_favorites()
 
-                        # atualiza o pill lá em cima
                         saved_pill_placeholder.markdown(
                             f'<div class="rijks-summary-pill">Saved artworks: '
                             f'<strong>{len(favorites)}</strong></div>',
@@ -600,7 +689,6 @@ if results:
                 else:
                     is_fav = False
 
-                # badges usando o estado ATUAL (sem atraso)
                 badge_parts = []
                 if is_fav:
                     badge_parts.append(
@@ -618,7 +706,6 @@ if results:
                         unsafe_allow_html=True,
                     )
 
-                # metadados de data / ID / link
                 dating = art.get("dating") or {}
                 presenting_date = dating.get("presentingDate")
                 year = extract_year(dating) if dating else None
@@ -632,15 +719,6 @@ if results:
                     st.markdown(f"[View on Rijksmuseum website]({web_link})")
 
                 st.markdown("</div>", unsafe_allow_html=True)
-
-                # --- Atualiza o contador de obras salvas com o estado MAIS RECENTE ---
-                favorites = st.session_state.get("favorites", {})
-                saved_pill_placeholder.markdown(
-                    f'<div class="rijks-summary-pill">Saved artworks: '
-                    f'<strong>{len(favorites)}</strong></div>',
-                    unsafe_allow_html=True,
-                )
-
 else:
     meta = st.session_state.get("search_meta", {})
     total_found = meta.get("total_found", 0)
