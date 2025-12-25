@@ -8,7 +8,7 @@ import csv
 import streamlit as st
 
 from app_paths import FAV_FILE, NOTES_FILE, HERO_IMAGE_PATH
-from analytics import track_event_once
+from analytics import track_event, track_event_once
 from rijks_api import search_artworks, extract_year, get_best_image_url
 
 
@@ -488,13 +488,41 @@ if run_search or page_changed:
                 "page_size": int(num_results),
             }
 
+            # 🔎 NOVO: registrar analytics da busca
+            clean_query = search_term.strip()
+            track_event(
+                event="search_executed",
+                page="Explorer",
+                props={
+                    # query (apenas amostra e tamanho)
+                    "query_sample": clean_query[:60],
+                    "query_length": len(clean_query),
+
+                    # parâmetros enviados à API
+                    "object_type": object_type_param or "Any",
+                    "sort_by": sort_by,
+                    "page": int(result_page),
+                    "page_size": int(num_results),
+
+                    # filtros locais
+                    "year_min": year_min,
+                    "year_max": year_max,
+                    "has_material_filter": bool(material_filter),
+                    "has_place_filter": bool(place_filter),
+
+                    # resultados
+                    "api_total_found": int(total_found or 0),
+                    "api_returned": len(raw_results or []),
+                    "filtered_count": len(filtered_results),
+                },
+            )
+
             # garante que o pill está sincronizado com o favorites atual
             saved_pill_placeholder.markdown(
                 f'<div class="rijks-summary-pill">Saved artworks: '
                 f'<strong>{len(st.session_state.get("favorites", {}))}</strong></div>',
                 unsafe_allow_html=True,
             )
-
         except RuntimeError as e:
             st.error(str(e))
             st.session_state["results"] = []
@@ -557,24 +585,41 @@ if results:
     )
 
     # Lógica ADD ALL
+    # ---- Lógica dos botões ----
     if add_all_clicked:
         added = 0
         for art in results:
             obj_num = art.get("objectNumber")
             if not obj_num:
                 continue
+
+            # adiciona à seleção, se ainda não estiver
             if obj_num not in favorites:
                 favorites[obj_num] = art
                 added += 1
+
+            # sincroniza os checkboxes
             st.session_state[f"fav_{obj_num}"] = True
 
         st.session_state["favorites"] = favorites
         save_favorites()
 
+        # atualiza o pill
         saved_pill_placeholder.markdown(
             f'<div class="rijks-summary-pill">Saved artworks: '
             f'<strong>{len(favorites)}</strong></div>',
             unsafe_allow_html=True,
+        )
+
+        # 🔎 NOVO: evento de seleção em massa (add)
+        track_event(
+            event="selection_add_all",
+            page="Explorer",
+            props={
+                "added_count": int(added),
+                "result_count": len(results),
+                "total_selection_after": len(favorites),
+            },
         )
 
         if added > 0:
@@ -582,16 +627,17 @@ if results:
         else:
             st.info("All artworks in the current results were already in your selection.")
 
-    # Lógica REMOVE ALL
     if remove_all_clicked:
         removed = 0
         for art in results:
             obj_num = art.get("objectNumber")
             if not obj_num:
                 continue
+
             if obj_num in favorites:
                 favorites.pop(obj_num)
                 removed += 1
+
             st.session_state[f"fav_{obj_num}"] = False
 
         st.session_state["favorites"] = favorites
@@ -603,11 +649,21 @@ if results:
             unsafe_allow_html=True,
         )
 
+        # 🔎 NOVO: evento de seleção em massa (remove)
+        track_event(
+            event="selection_remove_all",
+            page="Explorer",
+            props={
+                "removed_count": int(removed),
+                "result_count": len(results),
+                "total_selection_after": len(favorites),
+            },
+        )
+
         if removed > 0:
             st.success(f"Removed {removed} artwork(s) from your selection.")
         else:
             st.info("None of the current results were in your selection.")
-
 # ------------------------------------------------------------
 # Results grid (cards)
 # ------------------------------------------------------------

@@ -20,7 +20,7 @@ ASSETS_DIR = BASE_DIR / "assets"
 # Analytics (local, anonymous)
 # ============================================================
 ANALYTICS_DIR = DATA_DIR / "analytics"
-ANALYTICS_EVENTS_FILE = ANALYTICS_DIR / "analytics_events.jsonl"
+ANALYTICS_EVENTS_FILE = ANALYTICS_DIR / "analytics_events.json"
 
 # guarantee directories exist (safe)
 ANALYTICS_DIR.mkdir(parents=True, exist_ok=True)
@@ -32,3 +32,8 @@ PDF_META_FILE = DATA_DIR / "pdf_meta.json"
 
 # Assets
 HERO_IMAGE_PATH = ASSETS_DIR / "rijks_header.jpg"
+
+# Analytics paths
+ANALYTICS_DIR = DATA_DIR / "analytics"
+ANALYTICS_FILE = ANALYTICS_DIR / "analytics_events.jsonl"
+ANALYTICS_CONFIG_FILE = ANALYTICS_DIR / "analytics_config.json"

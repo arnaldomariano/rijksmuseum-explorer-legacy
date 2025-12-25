@@ -27,7 +27,7 @@ st.set_page_config(page_title="Statistics", layout="wide")
 st.markdown("## 📊 Usage statistics (local, anonymous)")
 
 st.caption(
-    "This dashboard reads the local file `analytics_events.jsonl` created by the app. "
+    "This dashboard reads the local file `analytics_events.json` created by the app. "
     "No data is sent anywhere."
 )
 
