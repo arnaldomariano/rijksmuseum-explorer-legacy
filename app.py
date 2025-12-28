@@ -729,9 +729,34 @@ if results:
 
                     if checked != was_fav:
                         if checked:
+                            # entrou na seleção
                             favorites[object_number] = art
+
+                            # 🔎 novo: registrar seleção individual como “view” da obra
+                            track_event(
+                                event="selection_add_item",
+                                page="Explorer",
+                                props={
+                                    "object_id": object_number,
+                                    "artist": maker,
+                                    "source": "Explorer",
+                                },
+                            )
                         else:
+                            # saiu da seleção
                             favorites.pop(object_number, None)
+
+                            # 🔎 novo: remoção individual
+                            track_event(
+                                event="selection_remove_item",
+                                page="Explorer",
+                                props={
+                                    "object_id": object_number,
+                                    "artist": maker,
+                                    "source": "Explorer",
+                                },
+                            )
+
                         st.session_state["favorites"] = favorites
                         save_favorites()
 

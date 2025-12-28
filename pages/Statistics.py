@@ -152,21 +152,30 @@ st.download_button(
     mime="text/csv",
     key="dl_analytics_csv",
 )
-
 # -------------------------
 # Aggregations
 # -------------------------
 counts_by_type = Counter(e.get("event") for e in filtered if e.get("event"))
 
+page_views_by_page = Counter()
 views_by_object = Counter()
 views_by_artist = Counter()
 exports_by_format = Counter()
+search_queries = Counter()
+search_configs = Counter()
 
 for e in filtered:
     ev = e.get("event")
+    page_name = e.get("page") or "(unknown page)"
     props = e.get("props") or {}
 
-    if ev in ("artwork_detail_opened", "artwork_view"):
+    # Page views
+    if ev == "page_view":
+        page_views_by_page[page_name] += 1
+
+    # Artwork views / detail opens
+    # “view” de obra: qualquer evento que indique interesse direto na obra
+    if ev in ("artwork_detail_opened", "artwork_view", "selection_add_item"):
         obj = props.get("object_id")
         artist = props.get("artist")
         if obj:
@@ -174,13 +183,96 @@ for e in filtered:
         if artist:
             views_by_artist[artist] += 1
 
+    # Exports
     if ev in ("export_download", "export_prepare"):
         fmt = (props.get("format") or "").lower().strip()
         if fmt:
             exports_by_format[fmt] += 1
 
-st.markdown("---")
+    # Searches
+    if ev == "search_executed":
+        q = (props.get("query_sample") or "").strip()
+        if q:
+            search_queries[q] += 1
 
+        cfg_key = (
+            f"type={props.get('object_type', 'Any')}; "
+            f"sort={props.get('sort_by', 'relevance')}; "
+            f"year={props.get('year_min', '')}-{props.get('year_max', '')}; "
+            f"material={bool(props.get('has_material_filter'))}; "
+            f"place={bool(props.get('has_place_filter'))}"
+        )
+        search_configs[cfg_key] += 1
+
+# -------------------------
+# Export aggregated stats (CSV)
+# -------------------------
+stats_rows: list[dict] = []
+
+# 1) Contagem por tipo de evento
+for ev_type, count in counts_by_type.most_common():
+    stats_rows.append(
+        {"category": "event_type", "key": ev_type or "(none)", "count": count}
+    )
+
+# 2) Page views por página
+for page_name, count in page_views_by_page.most_common():
+    stats_rows.append(
+        {"category": "page_view", "key": page_name, "count": count}
+    )
+
+# 3) Exportações por formato
+for fmt, count in exports_by_format.most_common():
+    stats_rows.append(
+        {"category": "export_format", "key": fmt or "(none)", "count": count}
+    )
+
+# 4) Visualizações por objeto
+for obj, count in views_by_object.most_common():
+    stats_rows.append(
+        {"category": "object_id", "key": obj, "count": count}
+    )
+
+# 5) Visualizações por artista
+for artist, count in views_by_artist.most_common():
+    stats_rows.append(
+        {"category": "artist", "key": artist, "count": count}
+    )
+
+# 6) Buscas por termo (query_sample)
+for query, count in search_queries.most_common():
+    stats_rows.append(
+        {"category": "search_query", "key": query, "count": count}
+    )
+
+# 7) Buscas por configuração (tipo, sort, filtros locais)
+for cfg, count in search_configs.most_common():
+    stats_rows.append(
+        {"category": "search_config", "key": cfg, "count": count}
+    )
+
+if stats_rows:
+    stats_buffer = io.StringIO()
+    writer = csv.DictWriter(
+        stats_buffer,
+        fieldnames=["category", "key", "count"],
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    writer.writerows(stats_rows)
+    stats_csv_bytes = stats_buffer.getvalue().encode("utf-8")
+
+    st.download_button(
+        "📊 Download aggregated stats (CSV)",
+        data=stats_csv_bytes,
+        file_name=f"analytics_stats_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv",
+        key="dl_analytics_stats_csv",
+    )
+else:
+    st.caption("No aggregated stats available yet for current filters.")
+
+st.markdown("---")
 # -------------------------
 # Maintenance: clear file
 # -------------------------
@@ -266,6 +358,32 @@ with c2:
             st.write(f"- **{artist}**: {n}")
     else:
         st.write("No artist view events yet.")
+
+c3, c4 = st.columns(2)
+
+with c3:
+    st.subheader("Page views by page")
+    if page_views_by_page:
+        for page_name, count in page_views_by_page.most_common():
+            st.write(f"- **{page_name}**: {count}")
+    else:
+        st.write("No page view events yet.")
+
+with c4:
+    st.subheader("Top search queries")
+    max_q = st.slider(
+        "How many queries to show",
+        5,
+        50,
+        10,
+        key="top_queries_n",
+    )
+    if search_queries:
+        for query, n in search_queries.most_common(max_q):
+            label = query or "(empty search)"
+            st.write(f"- **{label}**: {n}")
+    else:
+        st.write("No search events yet.")
 
 st.markdown("---")
 

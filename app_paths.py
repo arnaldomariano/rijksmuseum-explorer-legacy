@@ -13,7 +13,7 @@ from pathlib import Path
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = BASE_DIR / "data" / "analytics"
 ASSETS_DIR = BASE_DIR / "assets"
 
 # ============================================================
@@ -21,6 +21,10 @@ ASSETS_DIR = BASE_DIR / "assets"
 # ============================================================
 ANALYTICS_DIR = DATA_DIR / "analytics"
 ANALYTICS_EVENTS_FILE = ANALYTICS_DIR / "analytics_events.json"
+
+# 👉 arquivo único de eventos
+ANALYTICS_EVENTS_FILE = DATA_DIR / "analytics_events.json"
+
 
 # guarantee directories exist (safe)
 ANALYTICS_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,3 +41,5 @@ HERO_IMAGE_PATH = ASSETS_DIR / "rijks_header.jpg"
 ANALYTICS_DIR = DATA_DIR / "analytics"
 ANALYTICS_FILE = ANALYTICS_DIR / "analytics_events.jsonl"
 ANALYTICS_CONFIG_FILE = ANALYTICS_DIR / "analytics_config.json"
+# 👉 alias para o módulo analytics.py (pra não quebrar nada)
+ANALYTICS_FILE = ANALYTICS_EVENTS_FILE
