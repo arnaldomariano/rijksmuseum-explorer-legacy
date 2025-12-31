@@ -1,4 +1,3 @@
-
 import json
 import io
 import csv
@@ -13,9 +12,22 @@ from app_paths import FAV_FILE, NOTES_FILE, PDF_META_FILE
 from rijks_api import get_best_image_url
 from analytics import track_event
 
+"""
+My Selection page
+
+This page shows the user's saved artworks (local favorites). It provides:
+
+- Local persistence of favorites and research notes (JSON files).
+- Internal filters (metadata and notes) over the current selection.
+- Gallery controls (sorting, grouping by artist, compact mode, pagination).
+- Export tools (CSV / JSON / PDF, selection-sharing code, notes exports).
+- Artwork comparison (side-by-side) within the current selection.
+- Detail view for a single artwork with zoom and research notes editor.
+- Local analytics events for usage statistics (no data is sent anywhere).
+"""
 
 # ============================================================
-# Try to import reportlab for illustrated PDF export
+# ReportLab import (optional PDF generation with thumbnails)
 # ============================================================
 try:
     from reportlab.lib.pagesizes import A4
@@ -28,10 +40,11 @@ except ImportError:
 
 
 # ============================================================
-# Cache helpers
+# Image URL cache helper
 # ============================================================
 @st.cache_data(show_spinner=False)
 def cached_best_image_url(art: dict):
+    """Small cache wrapper around get_best_image_url for faster gallery rendering."""
     return get_best_image_url(art)
 
 
@@ -40,6 +53,8 @@ def cached_best_image_url(art: dict):
 # ============================================================
 def load_pdf_meta() -> dict:
     """
+    Load PDF configuration used by this page and the PDF_Setup page.
+
     Structure:
         {
             "opening_text": "...",
@@ -49,6 +64,8 @@ def load_pdf_meta() -> dict:
             "include_comments": true,
             "artwork_comments": { "objectNumber": "text", ... }
         }
+
+    Data is stored in a local JSON file and cached in session_state["pdf_meta"].
     """
     if "pdf_meta" in st.session_state:
         return st.session_state["pdf_meta"]
@@ -69,6 +86,7 @@ def load_pdf_meta() -> dict:
                 if isinstance(data, dict):
                     base.update(data)
         except Exception:
+            # PDF meta is optional; never break the app because of it
             pass
 
     st.session_state["pdf_meta"] = base
@@ -76,9 +94,10 @@ def load_pdf_meta() -> dict:
 
 
 # ============================================================
-# Notes helpers
+# Notes helpers (local JSON file)
 # ============================================================
 def load_notes() -> None:
+    """Load research notes for artworks into st.session_state['notes']."""
     if "notes" in st.session_state:
         return
 
@@ -94,6 +113,7 @@ def load_notes() -> None:
 
 
 def save_notes() -> None:
+    """Persist current notes from session_state to NOTES_FILE."""
     try:
         with open(NOTES_FILE, "w", encoding="utf-8") as f:
             json.dump(
@@ -103,6 +123,7 @@ def save_notes() -> None:
                 indent=2,
             )
     except Exception:
+        # Notes are a convenience feature; never break the app here
         pass
 
 
@@ -110,6 +131,13 @@ def save_notes() -> None:
 # Selection statistics helper
 # ============================================================
 def compute_selection_stats(favorites_dict: dict) -> dict:
+    """
+    Compute basic statistics for a favorites dictionary:
+
+    - count: number of artworks
+    - artists: distinct artists
+    - min_year / max_year: approximate date range
+    """
     if not favorites_dict:
         return {"count": 0, "artists": 0, "min_year": None, "max_year": None}
 
@@ -125,6 +153,7 @@ def compute_selection_stats(favorites_dict: dict) -> dict:
         dating = art.get("dating") or {}
         year = None
 
+        # Prefer numeric year when available
         if isinstance(dating.get("year"), int):
             year = dating["year"]
         else:
@@ -147,7 +176,7 @@ def compute_selection_stats(favorites_dict: dict) -> dict:
 
 
 # ============================================================
-# Internal metadata filters helper (within selection)
+# Internal metadata filter helper (inside selection)
 # ============================================================
 def passes_selection_filters(
     art: dict,
@@ -157,6 +186,15 @@ def passes_selection_filters(
     artist_filter: str,
     object_type_filter: str,
 ) -> bool:
+    """
+    Return True if an artwork passes the internal metadata filters.
+
+    Filters:
+    - year range
+    - free text (title / longTitle / maker / materials / techniques / places / types)
+    - artist substring
+    - object type substring
+    """
     dating = art.get("dating") or {}
     year_val = None
 
@@ -173,6 +211,7 @@ def passes_selection_filters(
     if year_val is not None and not (year_min <= year_val <= year_max):
         return False
 
+    # Free-text filter
     if text_filter:
         needle = text_filter.lower().strip()
         if needle:
@@ -191,11 +230,13 @@ def passes_selection_filters(
             if needle not in " | ".join(parts):
                 return False
 
+    # Artist substring
     if artist_filter:
         artist = (art.get("principalOrFirstMaker") or "").lower()
         if artist_filter.lower().strip() not in artist:
             return False
 
+    # Object type substring
     if object_type_filter:
         obj_types = art.get("objectTypes") or []
         if object_type_filter.lower().strip() not in ", ".join(obj_types).lower():
@@ -205,9 +246,10 @@ def passes_selection_filters(
 
 
 # ============================================================
-# Custom CSS
+# Custom CSS & footer
 # ============================================================
 def inject_custom_css() -> None:
+    """Inject dark-mode layout and gallery card styling."""
     st.markdown(
         """
         <style>
@@ -351,6 +393,7 @@ def inject_custom_css() -> None:
 
 
 def show_footer() -> None:
+    """Show a small footer acknowledging the Rijksmuseum API."""
     st.markdown(
         """
         <div class="rijks-footer">
@@ -364,11 +407,16 @@ def show_footer() -> None:
 
 inject_custom_css()
 
-
 # ============================================================
 # PDF builder (illustrated)
 # ============================================================
 def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
+    """
+    Build an illustrated PDF (one artwork per page) using ReportLab.
+
+    Returns a bytes buffer (ready to be sent to st.download_button) or None
+    when ReportLab is not available or there are no favorites.
+    """
     if not REPORTLAB_AVAILABLE or not favorites:
         return None
 
@@ -389,6 +437,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
     margin_bottom = 60
 
     def draw_footer():
+        """Draw footer with title + generation timestamp on the current page."""
         c.setFont("Helvetica", 8)
         footer_left = f"Rijksmuseum Explorer — My selection ({len(favorites)} artworks)"
         generated_on = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -398,6 +447,11 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
         c.drawRightString(page_width - margin_right, y_footer, footer_right)
 
     def draw_text_block(title: str, text: str, y_start: float, cont_header: str) -> float:
+        """
+        Draw a titled text block, handling pagination for long content.
+
+        Returns the new y position after the block.
+        """
         text = (text or "").strip()
         if not text:
             return y_start
@@ -430,7 +484,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
 
     total = len(favorites)
 
-    # Cover
+    # 1) Cover
     if include_cover:
         cover_title = "Rijksmuseum Explorer — My selection"
         generated_on = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -445,7 +499,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
         draw_footer()
         c.showPage()
 
-    # Opening text
+    # 2) Opening text (optional introduction)
     if include_opening_text and opening_text_cfg:
         c.setFont("Helvetica-Bold", 16)
         c.drawString(margin_left, margin_top, "Introduction")
@@ -467,7 +521,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
         draw_footer()
         c.showPage()
 
-    # Contents
+    # 3) Contents page listing all artworks
     c.setFont("Helvetica-Bold", 16)
     c.drawString(margin_left, margin_top, "Contents")
 
@@ -493,7 +547,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
     draw_footer()
     c.showPage()
 
-    # One artwork per page
+    # 4) One artwork per page
     for idx, (obj_num, art) in enumerate(favorites.items(), start=1):
         c.setFont("Helvetica-Bold", 18)
         c.drawString(margin_left, margin_top, "Rijksmuseum Selection")
@@ -515,6 +569,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
 
         image_drawn = False
 
+        # Thumbnail
         if img_url:
             try:
                 resp = requests.get(img_url, timeout=8)
@@ -537,8 +592,10 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
                 )
                 image_drawn = True
             except Exception:
+                # If image fails, we simply continue with text only
                 pass
 
+        # Basic metadata block beside the image
         c.setFont("Helvetica-Bold", 14)
         c.drawString(x_text, y_text, title)
 
@@ -558,6 +615,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
             short_link = link.replace("https://", "")
             c.drawString(x_text, y_text, f"Link: {short_link}")
 
+        # Text blocks (comments + notes)
         y_cursor = (y_image_top - thumb_h - 40) if image_drawn else (y_text - 28)
         y_cursor = min(y_cursor, y_text - 28)
 
@@ -589,7 +647,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
 
 
 # ============================================================
-# Page header
+# Page header & introductory text
 # ============================================================
 st.markdown("## ⭐ My selection")
 
@@ -597,7 +655,7 @@ st.write(
     "This page shows all artworks you have saved in your selection. "
     "Selections are stored locally in a small favorites file so they can be "
     "restored when you reopen or reload the app. "
-    "From here you can also select two artworks to compare them side by side."
+    "From here you can refine your selection, manage research notes and export data."
 )
 
 st.caption(
@@ -607,9 +665,13 @@ st.caption(
     "use **Clear my entire selection** below."
 )
 
+st.caption(
+    "To compare artworks side by side, mark up to **4 artworks** here as "
+    "comparison candidates and then open the **🖼️ Compare Artworks** page."
+)
 
 # ============================================================
-# Load favorites & notes
+# Load favorites & notes from local files
 # ============================================================
 if "favorites" not in st.session_state:
     if FAV_FILE.exists():
@@ -627,23 +689,19 @@ favorites: dict = st.session_state["favorites"]
 load_notes()
 notes: dict = st.session_state.get("notes", {})
 
+# Comparison candidates (shared with Compare Artworks page)
+if "compare_candidates" not in st.session_state:
+    st.session_state["compare_candidates"] = []
+
 # ------------------------------------------------------------
-# Geração de keys para checkboxes de comparação
-# (sempre que aumentamos esse número, TODOS os checkboxes
-# são recriados "do zero", desmarcados)
-# ------------------------------------------------------------
-if "cmp_key_generation" not in st.session_state:
-    st.session_state["cmp_key_generation"] = 0
 
-current_cmp_gen = st.session_state["cmp_key_generation"]
-
-
-# UI hint: show sidebar collapse tip only once
+# One-time sidebar tip state
 if "sidebar_tip_dismissed" not in st.session_state:
     st.session_state["sidebar_tip_dismissed"] = False
 
 if "sidebar_tip_version" not in st.session_state:
     st.session_state["sidebar_tip_version"] = 1
+
 
 # ============================================================
 # Analytics — page view (only once per session)
@@ -659,8 +717,9 @@ if "analytics_my_selection_viewed" not in st.session_state:
         },
     )
 
+
 # ============================================================
-# Empty selection
+# Empty selection guard
 # ============================================================
 if not favorites:
     st.info(
@@ -673,7 +732,7 @@ if not favorites:
 
 
 # ============================================================
-# Selection statistics
+# Selection statistics summary
 # ============================================================
 stats = compute_selection_stats(favorites)
 
@@ -709,7 +768,7 @@ with st.expander("📊 Selection insights", expanded=True):
 
 
 # ============================================================
-# Sidebar controls
+# Sidebar controls (filters, sorting, gallery options)
 # ============================================================
 default_min_year = stats["min_year"] if stats["min_year"] is not None else 1400
 default_max_year = stats["max_year"] if stats["max_year"] is not None else 2025
@@ -728,7 +787,7 @@ with st.sidebar:
                 st.session_state["sidebar_tip_dismissed"] = True
                 st.rerun()
 
-    # Internal filters
+    # Internal metadata filters
     with st.expander("🔍 Filter within selection", expanded=False):
         text_filter = st.text_input(
             "Search in title, artist, materials, techniques or places",
@@ -757,7 +816,7 @@ with st.sidebar:
             key="sb_object_type_filter",
         )
 
-    # High-level notes filter
+    # Notes-level filter (with / without notes)
     total_artworks = stats["count"]
     total_with_notes = num_noted
     total_without_notes = total_artworks - total_with_notes
@@ -783,7 +842,7 @@ with st.sidebar:
     )
     note_filter_lower = note_filter.strip().lower()
 
-    # Gallery controls
+    # Gallery display controls
     st.markdown("### 🧭 Gallery")
 
     sort_label = st.selectbox(
@@ -821,7 +880,7 @@ with st.sidebar:
 
 
 # ============================================================
-# Derived flags from sidebar
+# Derived flags from sidebar state
 # ============================================================
 if selection_filter_label.startswith("All artworks"):
     selection_filter_code = "all"
@@ -844,7 +903,7 @@ filters_active = any(
 
 
 # ============================================================
-# Apply internal metadata filters
+# Apply internal metadata filters to favorites
 # ============================================================
 filtered_favorites: dict = favorites
 if filters_active:
@@ -869,11 +928,12 @@ else:
 
 
 # ============================================================
-# Export panel
+# Export panel (CSV / JSON / PDF / share code / notes exports)
 # ============================================================
 st.markdown('<div class="rijks-export-panel">', unsafe_allow_html=True)
 st.markdown("### Export & share selection")
 
+# Build base CSV with artworks in the selection
 rows: list[list[str]] = []
 for obj_num, art in favorites.items():
     title = art.get("title", "")
@@ -891,10 +951,16 @@ if rows:
     writer.writerows(rows)
     csv_data = buffer.getvalue()
 
+# Full favorites JSON (pretty + compact)
 favorites_json_pretty = json.dumps(favorites, ensure_ascii=False, indent=2)
 favorites_json_compact = json.dumps(favorites, ensure_ascii=False)
-collection_code = base64.b64encode(favorites_json_compact.encode("utf-8")).decode("ascii")
 
+# Collection code (base64 of compact JSON)
+collection_code = base64.b64encode(
+    favorites_json_compact.encode("utf-8")
+).decode("ascii")
+
+# Notes exports (CSV + JSON)
 notes_rows: list[list[str]] = []
 for obj_num, art in favorites.items():
     note_text = notes.get(obj_num, "")
@@ -918,6 +984,7 @@ notes_json = json.dumps(notes, ensure_ascii=False, indent=2)
 
 col1, col2, col3, col4 = st.columns(4)
 
+# ----- CSV export -----
 with col1:
     st.markdown('<div class="export-card">', unsafe_allow_html=True)
     st.markdown("<h4>CSV</h4>", unsafe_allow_html=True)
@@ -940,6 +1007,7 @@ with col1:
         st.caption("No data.")
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ----- JSON export -----
 with col2:
     st.markdown('<div class="export-card">', unsafe_allow_html=True)
     st.markdown("<h4>JSON</h4>", unsafe_allow_html=True)
@@ -959,6 +1027,7 @@ with col2:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ----- PDF export -----
 with col3:
     st.markdown('<div class="export-card">', unsafe_allow_html=True)
     st.markdown("<h4>PDF</h4>", unsafe_allow_html=True)
@@ -1002,11 +1071,16 @@ with col3:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ----- Share code + notes exports -----
 with col4:
     st.markdown('<div class="export-card">', unsafe_allow_html=True)
     st.markdown("<h4>Share & notes</h4>", unsafe_allow_html=True)
-    st.markdown("<p>Share your selection and export research notes.</p>", unsafe_allow_html=True)
+    st.markdown(
+        "<p>Share your selection and export research notes.</p>",
+        unsafe_allow_html=True,
+    )
 
+    # Selection sharing via base64 code
     with st.expander("🔗 Share selection code", expanded=False):
         st.caption("Copy this code to share your selection with another user:")
         st.code(collection_code, language=None)
@@ -1023,7 +1097,9 @@ with col4:
                 st.warning("Please paste a collection code first.")
             else:
                 try:
-                    decoded = base64.b64decode(import_code.encode("ascii")).decode("utf-8")
+                    decoded = base64.b64decode(import_code.encode("ascii")).decode(
+                        "utf-8"
+                    )
                     data = json.loads(decoded)
                     if isinstance(data, dict):
                         st.session_state["favorites"] = data
@@ -1039,8 +1115,11 @@ with col4:
                 except Exception as e:
                     st.error(f"Could not decode the collection code: {e}")
 
+    # Notes exports
     with st.expander("📝 Export research notes", expanded=False):
-        st.caption("Download your research notes for use in Excel/Sheets or in other tools.")
+        st.caption(
+            "Download your research notes for use in Excel/Sheets or in other tools."
+        )
 
         if notes_csv_data:
             clicked = st.download_button(
@@ -1054,7 +1133,11 @@ with col4:
                 track_event(
                     event="export_download",
                     page="My_Selection",
-                    props={"format": "csv", "scope": "notes", "count": len(notes_rows)},
+                    props={
+                        "format": "csv",
+                        "scope": "notes",
+                        "count": len(notes_rows),
+                    },
                 )
         else:
             st.caption("No notes available yet.")
@@ -1070,7 +1153,11 @@ with col4:
             track_event(
                 event="export_download",
                 page="My_Selection",
-                props={"format": "json", "scope": "notes", "count": len(notes_rows)},
+                props={
+                    "format": "json",
+                    "scope": "notes",
+                    "count": len(notes_rows),
+                },
             )
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1079,7 +1166,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ============================================================
-# Clear entire selection
+# Clear entire selection (local favorites file + session)
 # ============================================================
 if st.button("Clear my entire selection"):
     st.session_state["favorites"] = {}
@@ -1089,8 +1176,10 @@ if st.button("Clear my entire selection"):
     except Exception:
         pass
 
-    # ao limpar tudo, também reiniciamos a geração dos checkboxes de comparação
-    st.session_state["cmp_key_generation"] = st.session_state.get("cmp_key_generation", 0) + 1
+    # When clearing everything, also reset comparison checkbox generation
+    st.session_state["cmp_key_generation"] = st.session_state.get(
+        "cmp_key_generation", 0
+    ) + 1
 
     st.session_state["detail_art_id"] = None
     st.success("Your selection has been cleared.")
@@ -1101,6 +1190,7 @@ if st.button("Clear my entire selection"):
 # Gallery + comparison logic helpers
 # ============================================================
 def get_year_for_sort(art: dict):
+    """Return a numeric year for sorting (when available)."""
     dating = art.get("dating") or {}
     y = dating.get("year")
     if isinstance(y, int):
@@ -1115,22 +1205,24 @@ def get_year_for_sort(art: dict):
 
 
 def has_note_text(obj_num: str) -> bool:
+    """True if the artwork has a non-empty research note."""
     txt = notes.get(obj_num, "")
     return isinstance(txt, str) and txt.strip() != ""
 
 
 def has_note(obj_id: str) -> bool:
+    """Alias for has_note_text (kept for clarity in filters)."""
     txt = notes.get(obj_id, "")
     return isinstance(txt, str) and txt.strip() != ""
 
 
 # ------------------------------------------------------------
-# Base items = favoritos após filtros de METADADOS
+# Base items = favorites after metadata filters
 # ------------------------------------------------------------
 base_items: list[tuple[str, dict]] = list(filtered_favorites.items())
 
 # -----------------------------
-# Ordenação global
+# Global sorting over base_items
 # -----------------------------
 if sort_label == "Artist (A–Z)":
     base_items.sort(
@@ -1170,7 +1262,7 @@ elif sort_label == "Notes first":
     )
 
 # -----------------------------
-# Filtro por palavra nas notes
+# Filter by keyword inside notes
 # -----------------------------
 if note_filter_lower:
     base_items = [
@@ -1180,15 +1272,17 @@ if note_filter_lower:
     ]
 
 # -----------------------------
-# Filtro de alto nível: com/sem notes
+# High-level filter: with / without notes
 # -----------------------------
 if selection_filter_code == "with_notes":
     base_items = [(obj_num, art) for obj_num, art in base_items if has_note(obj_num)]
 elif selection_filter_code == "without_notes":
-    base_items = [(obj_num, art) for obj_num, art in base_items if not has_note(obj_num)]
+    base_items = [
+        (obj_num, art) for obj_num, art in base_items if not has_note(obj_num)
+    ]
 
 # ------------------------------------------------------------
-# Resumo após TODOS os filtros
+# Summary after all filters (metadata + notes)
 # ------------------------------------------------------------
 total_after_filters = len(base_items)
 artists_after_filters = len(
@@ -1204,7 +1298,7 @@ st.caption(
 )
 
 # -----------------------------
-# Caso vazio
+# Empty result after filters
 # -----------------------------
 if not base_items:
     st.info(
@@ -1214,7 +1308,7 @@ if not base_items:
 
 else:
     # ---------------------------------------------------------
-    # Resumo dos filtros ativos
+    # Human-readable summary of active filters
     # ---------------------------------------------------------
     filters_summary: list[str] = []
 
@@ -1248,9 +1342,15 @@ else:
         st.caption("Active filters: none (full selection).")
 
     # =========================================================
-    # RENDERIZAÇÃO DOS CARDS (sem mexer em comparação aqui)
+    # Card rendering helper (used by both gallery modes)
     # =========================================================
     def render_cards(items: list[tuple[str, dict]], allow_compare: bool):
+        """
+        Render a grid of artwork cards.
+
+        - items: list of (objectNumber, art_dict)
+        - allow_compare: whether to show comparison checkboxes for these cards.
+        """
         for start_idx in range(0, len(items), cards_per_row):
             row_items = items[start_idx : start_idx + cards_per_row]
             cols = st.columns(len(row_items))
@@ -1261,12 +1361,19 @@ else:
                     has_notes_flag = isinstance(note_for_this, str) and note_for_this.strip()
 
                     card_classes = "rijks-card"
-                    card_classes += " rijks-card-has-notes" if has_notes_flag else " rijks-card-no-notes"
+                    card_classes += (
+                        " rijks-card-has-notes"
+                        if has_notes_flag
+                        else " rijks-card-no-notes"
+                    )
 
-                    st.markdown(f'<div class="{card_classes}">', unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="{card_classes}">', unsafe_allow_html=True
+                    )
 
                     img_url = cached_best_image_url(art)
 
+                    # Thumbnail area
                     if show_images:
                         if img_url:
                             try:
@@ -1278,6 +1385,7 @@ else:
                     else:
                         st.caption("Thumbnails hidden for faster browsing.")
 
+                    # Basic metadata
                     title = art.get("title", "Untitled")
                     maker = art.get("principalOrFirstMaker", "Unknown artist")
 
@@ -1311,6 +1419,7 @@ else:
                     if web_link:
                         st.markdown(f"[View on Rijksmuseum website]({web_link})")
 
+                    # Extra metadata (inside expander)
                     with st.expander("More details"):
                         long_title = art.get("longTitle")
                         object_types = art.get("objectTypes")
@@ -1327,19 +1436,50 @@ else:
                         if techniques:
                             st.write(f"**Techniques:** {', '.join(techniques)}")
                         if production_places:
-                            st.write(f"**Production place(s): {', '.join(production_places)}")
+                            st.write(
+                                f"**Production place(s): {', '.join(production_places)}"
+                            )
 
-                    if allow_compare:
-                        cmp_key = f"cmp_from_sel_{current_cmp_gen}_{obj_num}"
-                        st.checkbox(
-                            "Select for comparison",
-                            key=cmp_key,
+                    # Comparison candidate checkbox (shared with Compare Artworks page)
+                    if allow_compare and obj_num:
+                        compare_candidates = st.session_state.setdefault(
+                            "compare_candidates", []
                         )
 
+                        is_candidate = obj_num in compare_candidates
+                        cmp_key = f"cmp_candidate_{obj_num}"
+
+                        label = "Mark for comparison (up to 4)"
+                        checked = st.checkbox(label, value=is_candidate, key=cmp_key)
+
+                        if checked and not is_candidate:
+                            # Add new candidate if we are under the max limit
+                            if len(compare_candidates) >= 4:
+                                st.warning(
+                                    "You can mark at most 4 artworks for comparison. "
+                                    "Unmark another one first."
+                                )
+                                # Keep the checkbox visually off on the next run
+                                st.session_state[cmp_key] = False
+                            else:
+                                compare_candidates.append(obj_num)
+
+                        elif not checked and is_candidate:
+                            # Remove from candidates
+                            compare_candidates = [
+                                cid for cid in compare_candidates if cid != obj_num
+                            ]
+
+                        st.session_state["compare_candidates"] = compare_candidates
+
+                    # Detail view button
                     if st.button("View details", key=f"detail_btn_{obj_num}"):
                         st.session_state["detail_art_id"] = obj_num
 
-                    if st.button("Remove from my selection", key=f"remove_card_{obj_num}"):
+                    # Remove from selection (card level)
+                    if st.button(
+                        "Remove from my selection", key=f"remove_card_{obj_num}"
+                    ):
 
                         track_event(
                             event="selection_remove_item",
@@ -1347,7 +1487,13 @@ else:
                             props={
                                 "object_id": obj_num,
                                 "artist": art.get("principalOrFirstMaker"),
-                                "had_notes": bool((st.session_state.get("notes", {}).get(obj_num) or "").strip()),
+                                "had_notes": bool(
+                                    (
+                                        st.session_state.get("notes", {})
+                                        .get(obj_num, "")
+                                        .strip()
+                                    )
+                                ),
                                 "prev_count": len(favorites),
                                 "origin": "card",
                             },
@@ -1362,10 +1508,11 @@ else:
                         except Exception:
                             pass
 
-
+                        # If this artwork was open in detail view, close it
                         if st.session_state.get("detail_art_id") == obj_num:
                             st.session_state["detail_art_id"] = None
 
+                        # Remove notes for this artwork as well
                         if "notes" in st.session_state:
                             st.session_state["notes"].pop(obj_num, None)
                             try:
@@ -1414,14 +1561,7 @@ else:
             help="Turn on to open all artist blocks by default.",
         )
 
-        enable_compare_grouped = st.toggle(
-            "Enable comparison in grouped view",
-            value=False,
-            help="Allow selecting artworks for comparison inside artist groups.",
-            key="enable_compare_grouped_toggle",
-        )
-
-        # Agrupa por artista
+        # Group artworks by artist
         grouped: dict[str, list[tuple[str, dict]]] = {}
         for obj_num, art in base_items:
             artist = art.get("principalOrFirstMaker") or "Unknown artist"
@@ -1450,6 +1590,7 @@ else:
         )
 
         def sort_items_for_artist(items: list[tuple[str, dict]]):
+            """Sorting options inside each artist group."""
             if sort_within_artist == "Title (A–Z)":
                 items.sort(
                     key=lambda it: (
@@ -1481,6 +1622,7 @@ else:
 
         visible_items: list[tuple[str, dict]] = []
 
+        # Render groups for the current page of artists
         for artist in page_artists:
             items = grouped.get(artist, [])
             sort_items_for_artist(items)
@@ -1501,107 +1643,13 @@ else:
 
             header_line = " • ".join(subtitle_parts)
 
-            with st.expander(f"👤 {artist} — {header_line}", expanded=expand_artists):
+            with st.expander(
+                f"👤 {artist} — {header_line}", expanded=expand_artists
+            ):
                 render_cards(items, allow_compare=enable_compare_grouped)
 
-        # Painel de comparação no modo agrupado
-        if enable_compare_grouped:
-            # Selecionados APENAS dos artistas visíveis nesta página
-            comparison_ids = [
-                obj_num
-                for obj_num, _ in visible_items
-                if st.session_state.get(f"cmp_from_sel_{current_cmp_gen}_{obj_num}", False)
-            ]
-            num_selected = len(comparison_ids)
-
-            st.info(
-                f"Selected for comparison: {num_selected} "
-                "(please select exactly 2 artworks to compare)."
-            )
-
-            c1, c2 = st.columns([1, 1])
-
-            with c1:
-                compare_clicked = st.button(
-                    "Compare selected artworks",
-                    key="compare_grouped_btn",
-                    use_container_width=True,
-                )
-
-            with c2:
-                clear_clicked = st.button(
-                    "Clear comparison",
-                    key="clear_compare_grouped_btn",
-                    use_container_width=True,
-                )
-
-            if clear_clicked:
-                # Aumenta a geração -> todos os checkboxes ganham novas keys
-                st.session_state["cmp_key_generation"] = st.session_state.get("cmp_key_generation", 0) + 1
-                st.rerun()
-
-            if compare_clicked:
-                if num_selected != 2:
-                    st.warning("Please select exactly **two** artworks to compare.")
-                else:
-                    id_a, id_b = comparison_ids[0], comparison_ids[1]
-                    art_a = favorites.get(id_a)
-                    art_b = favorites.get(id_b)
-
-                    if not art_a or not art_b:
-                        st.error("Could not retrieve both artworks for comparison.")
-                    else:
-                        st.markdown("### 🔍 Side-by-side comparison")
-                        col_a, col_b = st.columns(2)
-
-                        with col_a:
-                            st.subheader("Artwork A")
-                            img_url_a = get_best_image_url(art_a)
-                            if img_url_a:
-                                try:
-                                    st.image(img_url_a, use_container_width=True)
-                                except Exception:
-                                    st.write("Error displaying image.")
-
-                            title_a = art_a.get("title", "Untitled")
-                            maker_a = art_a.get("principalOrFirstMaker", "Unknown artist")
-                            dating_a = art_a.get("dating", {}) or {}
-                            date_a = dating_a.get("presentingDate") or dating_a.get("year")
-                            link_a = art_a.get("links", {}).get("web")
-
-                            st.write(f"**Title:** {title_a}")
-                            st.write(f"**Artist:** {maker_a}")
-                            if date_a:
-                                st.write(f"**Date:** {date_a}")
-                            st.write(f"**Object ID:** {id_a}")
-                            if link_a:
-                                st.markdown(f"[View on Rijksmuseum website]({link_a})")
-
-                        with col_b:
-                            st.subheader("Artwork B")
-                            img_url_b = get_best_image_url(art_b)
-                            if img_url_b:
-                                try:
-                                    st.image(img_url_b, use_container_width=True)
-                                except Exception:
-                                    st.write("Error displaying image.")
-
-                            title_b = art_b.get("title", "Untitled")
-                            maker_b = art_b.get("principalOrFirstMaker", "Unknown artist")
-                            dating_b = art_b.get("dating", {}) or {}
-                            date_b = dating_b.get("presentingDate") or dating_b.get("year")
-                            link_b = art_b.get("links", {}).get("web")
-
-                            st.write(f"**Title:** {title_b}")
-                            st.write(f"**Artist:** {maker_b}")
-                            if date_b:
-                                st.write(f"**Date:** {date_b}")
-                            st.write(f"**Object ID:** {id_b}")
-                            if link_b:
-                                st.markdown(f"[View on Rijksmuseum website]({link_b})")
-
     # =========================================================
-    # MODE B) GRID (default)
+    # MODE B) GRID (default gallery)
     # =========================================================
     else:
         items_per_page = st.select_slider(
@@ -1630,130 +1678,30 @@ else:
             f"{total_items} artwork(s) total after filters."
         )
 
-        st.markdown("### Select artworks from your selection to compare")
+        st.markdown("### Mark artworks from your selection as comparison candidates")
         render_cards(page_items, allow_compare=True)
 
-        # Selecionados APENAS desta página
-        # Selecionados APENAS desta página
-        comparison_ids = [
-            obj_num
-            for obj_num, _ in page_items
-            if st.session_state.get(f"cmp_from_sel_{current_cmp_gen}_{obj_num}", False)
-        ]
-        num_selected = len(comparison_ids)
+        compare_candidates = st.session_state.get("compare_candidates", [])
+        num_candidates = len(compare_candidates)
 
-        if num_selected == 0:
+        if num_candidates == 0:
             st.info(
-                "Select artworks above using **Select for comparison** "
-                "to enable the comparison."
-            )
-        elif num_selected == 2:
-            st.success(
-                "Selected for comparison: **2 artworks**. "
-                "You can now click **Compare selected artworks** below."
+                "Mark artworks above with **Mark for comparison** to prepare "
+                "a side-by-side comparison on the **Compare Artworks** page."
             )
         else:
-            st.warning(
-                f"Selected for comparison: **{num_selected}** "
-                "(please select **exactly 2** artworks to compare)."
+            st.success(
+                f"Currently marked for comparison: **{num_candidates}** artwork(s). "
+                "Open the **Compare Artworks** page to run the side-by-side view."
             )
-
-        c1, c2 = st.columns([1, 1])
-
-        with c1:
-            compare_clicked = st.button(
-                "Compare selected artworks",
-                key="compare_grid_btn",
-                use_container_width=True,
-            )
-
-        with c2:
-            clear_clicked = st.button(
-                "Clear comparison",
-                key="clear_compare_grid_btn",
-                use_container_width=True,
-            )
-
-        if clear_clicked:
-            # Aumenta a geração -> todos os checkboxes ganham novas keys
-            st.session_state["cmp_key_generation"] = st.session_state.get("cmp_key_generation", 0) + 1
-            st.rerun()
-
-        if compare_clicked:
-            if num_selected != 2:
-                st.warning("Please select exactly **two** artworks to compare.")
-            else:
-                id_a, id_b = comparison_ids[0], comparison_ids[1]
-                art_a = favorites.get(id_a)
-                art_b = favorites.get(id_b)
-
-                if not art_a or not art_b:
-                    st.error("Could not retrieve both artworks for comparison.")
-                else:
-                    st.markdown("### 🔍 Side-by-side comparison")
-                    col_a, col_b = st.columns(2)
-
-                    with col_a:
-                        st.subheader("Artwork A")
-                        img_url_a = cached_best_image_url(art_a)
-                        if img_url_a:
-                            try:
-                                st.image(img_url_a, use_container_width=True)
-                            except Exception:
-                                st.write("Error displaying image.")
-                        else:
-                            st.caption(
-                                "No public image available for this artwork via API."
-                            )
-
-                        title_a = art_a.get("title", "Untitled")
-                        maker_a = art_a.get("principalOrFirstMaker", "Unknown artist")
-                        dating_a = art_a.get("dating", {}) or {}
-                        date_a = dating_a.get("presentingDate") or dating_a.get("year")
-                        link_a = art_a.get("links", {}).get("web")
-
-                        st.write(f"**Title:** {title_a}")
-                        st.write(f"**Artist:** {maker_a}")
-                        if date_a:
-                            st.write(f"**Date:** {date_a}")
-                        st.write(f"**Object ID:** {id_a}")
-                        if link_a:
-                            st.markdown(f"[View on Rijksmuseum website]({link_a})")
-
-                    with col_b:
-                        st.subheader("Artwork B")
-                        img_url_b = cached_best_image_url(art_b)
-                        if img_url_b:
-                            try:
-                                st.image(img_url_b, use_container_width=True)
-                            except Exception:
-                                st.write("Error displaying image.")
-                        else:
-                            st.caption(
-                                "No public image available for this artwork via API."
-                            )
-
-                        title_b = art_b.get("title", "Untitled")
-                        maker_b = art_b.get("principalOrFirstMaker", "Unknown artist")
-                        dating_b = art_b.get("dating", {}) or {}
-                        date_b = dating_b.get("presentingDate") or dating_b.get("year")
-                        link_b = art_b.get("links", {}).get("web")
-
-                        st.write(f"**Title:** {title_b}")
-                        st.write(f"**Artist:** {maker_b}")
-                        if date_b:
-                            st.write(f"**Date:** {date_b}")
-                        st.write(f"**Object ID:** {id_b}")
-                        if link_b:
-                            st.markdown(f"[View on Rijksmuseum website]({link_b})")
-
 # ============================================================
-# Detail view + notes
+# Detail view + research notes editor
 # ============================================================
 detail_id = st.session_state.get("detail_art_id")
 if detail_id and detail_id in favorites:
     art = favorites[detail_id]
 
+    # Analytics: only log first time a given artwork is opened in detail view
     analytics_key = f"analytics_detail_opened_{detail_id}"
     if analytics_key not in st.session_state:
         st.session_state[analytics_key] = True
@@ -1771,7 +1719,9 @@ if detail_id and detail_id in favorites:
                 "title": title,
                 "year": year,
                 "has_notes": bool(
-                    isinstance(st.session_state.get("notes", {}).get(detail_id), str)
+                    isinstance(
+                        st.session_state.get("notes", {}).get(detail_id), str
+                    )
                     and st.session_state["notes"][detail_id].strip()
                 ),
             },
@@ -1845,6 +1795,7 @@ if detail_id and detail_id in favorites:
         key=f"note_{detail_id}",
     )
 
+    # Save notes + analytics
     if st.button("Save notes", key=f"save_note_{detail_id}"):
         st.session_state["notes"][detail_id] = note_text
         save_notes()
@@ -1855,11 +1806,14 @@ if detail_id and detail_id in favorites:
             page="My_Selection",
             props={
                 "object_id": detail_id,
-                "note_len": len(note_text.strip()) if isinstance(note_text, str) else 0,
+                "note_len": len(note_text.strip())
+                if isinstance(note_text, str)
+                else 0,
                 "has_note": bool(isinstance(note_text, str) and note_text.strip()),
             },
         )
 
+    # Remove from selection (detail view)
     if st.button("Remove from my selection", key=f"remove_detail_{detail_id}"):
 
         track_event(
@@ -1868,7 +1822,9 @@ if detail_id and detail_id in favorites:
             props={
                 "object_id": detail_id,
                 "artist": art.get("principalOrFirstMaker"),
-                "had_notes": bool((st.session_state.get("notes", {}).get(detail_id) or "").strip()),
+                "had_notes": bool(
+                    (st.session_state.get("notes", {}).get(detail_id) or "").strip()
+                ),
                 "prev_count": len(favorites),
                 "origin": "detail_view",
             },
@@ -1901,6 +1857,7 @@ if detail_id and detail_id in favorites:
         st.success("Artwork removed from your selection.")
         st.rerun()
 
+    # Close detail panel
     if st.button("Close detail view", key=f"close_detail_{detail_id}"):
         st.session_state["detail_art_id"] = None
         st.rerun()

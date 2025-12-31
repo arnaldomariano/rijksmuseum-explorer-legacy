@@ -1,7 +1,18 @@
 # app.py
 """
-Rijksmuseum Explorer - main page
+Rijksmuseum Explorer — main page (Explorer)
+
+This is the main entry point of the app. It provides:
+
+- Sidebar controls to search the Rijksmuseum API (query, object type, sort mode).
+- Local advanced filters (year range, material, production place).
+- A results grid with artwork cards (image, metadata, link).
+- Local "selection" via the checkbox **In my selection**.
+- Bulk tools to add/remove all current results to/from the global selection.
+- A live pill showing how many artworks are currently saved.
+- Analytics events for page views, searches and selection actions.
 """
+
 import json
 import io
 import csv
@@ -22,6 +33,7 @@ st.set_page_config(page_title="Rijksmuseum Explorer", page_icon="🎨", layout="
 # CSS & footer
 # ============================================================
 def inject_custom_css() -> None:
+    """Inject dark theme and card styling for the Explorer page."""
     st.markdown(
         """
         <style>
@@ -121,6 +133,7 @@ def inject_custom_css() -> None:
 
 
 def show_footer() -> None:
+    """Show a small footer acknowledging the Rijksmuseum API."""
     st.markdown(
         """
         <div class="rijks-footer">
@@ -140,6 +153,7 @@ inject_custom_css()
 # ============================================================
 @st.cache_data(show_spinner=False)
 def _read_json_file(path_str: str) -> dict:
+    """Safe JSON file reader that always returns a dict (or empty dict)."""
     try:
         with open(path_str, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -149,27 +163,49 @@ def _read_json_file(path_str: str) -> dict:
 
 
 def load_favorites() -> None:
+    """Load favorites into session_state['favorites'] from local JSON file."""
     if "favorites" in st.session_state:
         return
-    st.session_state["favorites"] = _read_json_file(str(FAV_FILE)) if FAV_FILE.exists() else {}
+    st.session_state["favorites"] = (
+        _read_json_file(str(FAV_FILE)) if FAV_FILE.exists() else {}
+    )
 
 
 def load_notes() -> None:
+    """Load notes into session_state['notes'] from local JSON file."""
     if "notes" in st.session_state:
         return
-    st.session_state["notes"] = _read_json_file(str(NOTES_FILE)) if NOTES_FILE.exists() else {}
+    st.session_state["notes"] = (
+        _read_json_file(str(NOTES_FILE)) if NOTES_FILE.exists() else {}
+    )
 
 
 def save_favorites() -> None:
+    """Persist current favorites to disk and clear the file cache."""
     try:
         with open(FAV_FILE, "w", encoding="utf-8") as f:
             json.dump(st.session_state["favorites"], f, ensure_ascii=False, indent=2)
-        _read_json_file.clear()  # evita cache “velho”
+        # Avoid stale cache for _read_json_file
+        _read_json_file.clear()
     except Exception:
+        # Favorites are a convenience layer; never break the UI here
         pass
 
 
-def passes_metadata_filters(art: dict, year_min: int, year_max: int, material_filter: str, place_filter: str) -> bool:
+def passes_metadata_filters(
+    art: dict,
+    year_min: int,
+    year_max: int,
+    material_filter: str,
+    place_filter: str,
+) -> bool:
+    """
+    Apply the local metadata filters to a single artwork:
+
+    - year range (based on extract_year)
+    - material substring (materials list from API)
+    - production place substring (productionPlaces list from API)
+    """
     dating = art.get("dating") or {}
     year = extract_year(dating)
     if year is not None and (year < year_min or year > year_max):
@@ -211,7 +247,7 @@ track_event_once(
 )
 
 # ============================================================
-# Sidebar (sem form, botão no final)
+# Sidebar (no form; one button at the end)
 # ============================================================
 sidebar = st.sidebar
 sidebar.header("🧭 Explore & Filter")
@@ -269,7 +305,7 @@ result_page = sidebar.number_input(
     help="Page of results to request from the API (1 = first page).",
 )
 
-# Detecta mudança de página para disparar nova busca automaticamente
+# Detect page changes to trigger a new search automatically
 if "last_result_page" not in st.session_state:
     st.session_state["last_result_page"] = int(result_page)
 
@@ -293,7 +329,7 @@ sidebar.caption(
 )
 
 # ------------------------
-# Text filters (helper)
+# Text filters (helper explanation)
 # ------------------------
 sidebar.markdown(
     """
@@ -312,7 +348,7 @@ Use short keywords, for example:
 )
 
 # ------------------------
-# Text filters (optional)
+# Text filters (optional, local metadata)
 # ------------------------
 sidebar.subheader("Text filters (optional)")
 sidebar.caption(
@@ -375,24 +411,25 @@ elif place_choice == "Custom…":
 else:
     place_filter = place_choice
 
-# pequeno espaço antes do botão
+# Small vertical spacer before the main button
 sidebar.markdown("<div style='height: 0.75rem'></div>", unsafe_allow_html=True)
 
-# Botão FINAL da sidebar (sem form, sem box)
+# Final sidebar button (no forms, no form_submit_button)
 run_search = sidebar.button(
     "🔍 Apply filters & search",
     use_container_width=True,
 )
 
-# aviso logo abaixo do botão
+# Reminder just below the button
 sidebar.caption(
     "Artworks marked as **In my selection** remain saved across searches and sessions. "
     "If you do not want previous selections to appear pre-selected in new searches, "
     "clear your selection on the **My Selection** page."
 )
 
-# mapeia o tipo para o parâmetro da API
+# Map UI object type to API parameter
 object_type_param = None if object_type == "Any" else object_type
+
 # ============================================================
 # Main page
 # ============================================================
@@ -436,9 +473,8 @@ with st.expander("ℹ️ How the search works (quick guide)", expanded=False):
         """
     )
 
-# placeholder para o contador de obras salvas (fica visualmente aqui em cima)
+# Placeholder for the saved-artworks counter pill (rendered near the top)
 saved_pill_placeholder = st.empty()
-# desenha o pill já com o número ATUAL de favoritos
 saved_pill_placeholder.markdown(
     f'<div class="rijks-summary-pill">Saved artworks: '
     f'<strong>{len(favorites)}</strong></div>',
@@ -447,7 +483,7 @@ saved_pill_placeholder.markdown(
 
 
 # ============================================================
-# Search execution (when button or page changes)
+# Search execution (when button is clicked or page changes)
 # ============================================================
 if run_search or page_changed:
     if not search_term.strip():
@@ -457,7 +493,7 @@ if run_search or page_changed:
     else:
         try:
             with st.spinner("Searching artworks in the Rijksmuseum collection..."):
-                # agora pedimos também a "page" da API
+                # We request a specific API page as well
                 raw_results, total_found = search_artworks(
                     query=search_term,
                     object_type=object_type_param,
@@ -466,6 +502,7 @@ if run_search or page_changed:
                     page=result_page,
                 )
 
+            # Apply local metadata filters (year/material/place) on top of API results
             filtered_results = [
                 art
                 for art in (raw_results or [])
@@ -479,7 +516,7 @@ if run_search or page_changed:
             ]
 
             st.session_state["results"] = filtered_results
-            # guardamos também page e page_size em meta
+            # Store metadata about this search (for captions and debug)
             st.session_state["search_meta"] = {
                 "total_found": total_found,
                 "api_count": len(raw_results or []),
@@ -488,36 +525,33 @@ if run_search or page_changed:
                 "page_size": int(num_results),
             }
 
-            # 🔎 NOVO: registrar analytics da busca
+            # Analytics: record each search execution
             clean_query = search_term.strip()
             track_event(
                 event="search_executed",
                 page="Explorer",
                 props={
-                    # query (apenas amostra e tamanho)
+                    # Query (sample + length)
                     "query_sample": clean_query[:60],
                     "query_length": len(clean_query),
-
-                    # parâmetros enviados à API
+                    # API parameters
                     "object_type": object_type_param or "Any",
                     "sort_by": sort_by,
                     "page": int(result_page),
                     "page_size": int(num_results),
-
-                    # filtros locais
+                    # Local filters
                     "year_min": year_min,
                     "year_max": year_max,
                     "has_material_filter": bool(material_filter),
                     "has_place_filter": bool(place_filter),
-
-                    # resultados
+                    # Result statistics
                     "api_total_found": int(total_found or 0),
                     "api_returned": len(raw_results or []),
                     "filtered_count": len(filtered_results),
                 },
             )
 
-            # garante que o pill está sincronizado com o favorites atual
+            # Keep the pill in sync with the current favorites
             saved_pill_placeholder.markdown(
                 f'<div class="rijks-summary-pill">Saved artworks: '
                 f'<strong>{len(st.session_state.get("favorites", {}))}</strong></div>',
@@ -534,7 +568,7 @@ if run_search or page_changed:
 
 results = st.session_state.get("results", [])
 
-# info de quantas obras estamos mostrando (sempre usando o meta ATUAL)
+# Caption about how many artworks are being displayed
 meta = st.session_state.get("search_meta", {})
 if meta.get("filtered_count") is not None and meta.get("total_found") is not None:
     st.caption(
@@ -576,7 +610,7 @@ if results:
             key="btn_remove_all_results",
         )
 
-    # 🔹 AVISO IMPORTANTE SOBRE ESSES BOTÕES
+    # Important note about what these buttons do
     st.caption(
         "Note: these buttons update your **global selection** "
         "(the same one shown on the *My Selection* page). "
@@ -584,8 +618,7 @@ if results:
         "“In my selection” checkboxes in each card instead."
     )
 
-    # Lógica ADD ALL
-    # ---- Lógica dos botões ----
+    # Bulk ADD ALL logic
     if add_all_clicked:
         added = 0
         for art in results:
@@ -593,25 +626,33 @@ if results:
             if not obj_num:
                 continue
 
-            # adiciona à seleção, se ainda não estiver
             if obj_num not in favorites:
                 favorites[obj_num] = art
                 added += 1
 
-            # sincroniza os checkboxes
-            st.session_state[f"fav_{obj_num}"] = True
+                # Also count each newly added artwork as an "artwork_view"
+                track_event(
+                    event="artwork_view",
+                    page="Explorer",
+                    props={
+                        "object_id": obj_num,
+                        "artist": art.get("principalOrFirstMaker", "Unknown artist"),
+                        "source": "selection_add_all",
+                    },
+                )
 
+            st.session_state[f"fav_{obj_num}"] = True
         st.session_state["favorites"] = favorites
         save_favorites()
 
-        # atualiza o pill
+        # Update the pill with the new selection size
         saved_pill_placeholder.markdown(
             f'<div class="rijks-summary-pill">Saved artworks: '
             f'<strong>{len(favorites)}</strong></div>',
             unsafe_allow_html=True,
         )
 
-        # 🔎 NOVO: evento de seleção em massa (add)
+        # Analytics: bulk selection add event
         track_event(
             event="selection_add_all",
             page="Explorer",
@@ -625,8 +666,11 @@ if results:
         if added > 0:
             st.success(f"Added {added} artwork(s) to your selection.")
         else:
-            st.info("All artworks in the current results were already in your selection.")
+            st.info(
+                "All artworks in the current results were already in your selection."
+            )
 
+    # Bulk REMOVE ALL logic
     if remove_all_clicked:
         removed = 0
         for art in results:
@@ -649,7 +693,7 @@ if results:
             unsafe_allow_html=True,
         )
 
-        # 🔎 NOVO: evento de seleção em massa (remove)
+        # Analytics: bulk selection remove event
         track_event(
             event="selection_remove_all",
             page="Explorer",
@@ -664,6 +708,7 @@ if results:
             st.success(f"Removed {removed} artwork(s) from your selection.")
         else:
             st.info("None of the current results were in your selection.")
+
 # ------------------------------------------------------------
 # Results grid (cards)
 # ------------------------------------------------------------
@@ -684,31 +729,35 @@ if results:
                 note_text = notes.get(object_number, "") if object_number else ""
                 has_notes = isinstance(note_text, str) and note_text.strip() != ""
 
+                # --- Image area: always show either an image OR a clear message ---
                 img_url = get_best_image_url(art)
+
                 if img_url:
                     try:
                         st.image(img_url, width="stretch")
                     except Exception:
-                        st.write("Error displaying image from API.")
+                        # Image failed to load (timeout, 403, etc.)
                         st.markdown(
                             """
                             <div class="rijks-no-image-msg">
-                            No public image is available via the API for this artwork.
+                            The image for this artwork could not be loaded via the public API
+                            at this moment.<br>
+                            You can still open it on the Rijksmuseum website using the link below.
                             </div>
                             """,
                             unsafe_allow_html=True,
                         )
                 else:
-                    st.write("No valid image available via API.")
+                    # No public image available from the API
                     st.markdown(
                         """
                         <div class="rijks-no-image-msg">
-                        No public image is available via the API for this artwork.
+                        No public image is available for this artwork via the Rijksmuseum API.<br>
+                        If needed, please use the link below to check it directly on the museum website.
                         </div>
                         """,
                         unsafe_allow_html=True,
                     )
-
                 st.markdown(
                     f'<div class="rijks-card-title">{title}</div>',
                     unsafe_allow_html=True,
@@ -718,7 +767,7 @@ if results:
                     unsafe_allow_html=True,
                 )
 
-                # checkbox + favorites
+                # Checkbox to add/remove from favorites (global selection)
                 if object_number:
                     was_fav = object_number in favorites
                     checked = st.checkbox(
@@ -729,10 +778,10 @@ if results:
 
                     if checked != was_fav:
                         if checked:
-                            # entrou na seleção
+                            # Added to selection
                             favorites[object_number] = art
 
-                            # 🔎 novo: registrar seleção individual como “view” da obra
+                            # Analytics: individual selection add
                             track_event(
                                 event="selection_add_item",
                                 page="Explorer",
@@ -742,11 +791,22 @@ if results:
                                     "source": "Explorer",
                                 },
                             )
+
+                            # Also count as an artwork view (for rankings)
+                            track_event(
+                                event="artwork_view",
+                                page="Explorer",
+                                props={
+                                    "object_id": object_number,
+                                    "artist": maker,
+                                    "source": "selection_checkbox",
+                                },
+                            )
                         else:
-                            # saiu da seleção
+                            # Removed from selection
                             favorites.pop(object_number, None)
 
-                            # 🔎 novo: remoção individual
+                            # Analytics: individual selection remove
                             track_event(
                                 event="selection_remove_item",
                                 page="Explorer",
@@ -765,11 +825,11 @@ if results:
                             f'<strong>{len(favorites)}</strong></div>',
                             unsafe_allow_html=True,
                         )
-
                     is_fav = checked
                 else:
                     is_fav = False
 
+                # Badges row (selection + notes)
                 badge_parts = []
                 if is_fav:
                     badge_parts.append(
@@ -787,6 +847,7 @@ if results:
                         unsafe_allow_html=True,
                     )
 
+                # Basic metadata (date/year and object ID)
                 dating = art.get("dating") or {}
                 presenting_date = dating.get("presentingDate")
                 year = extract_year(dating) if dating else None
@@ -817,3 +878,8 @@ else:
             "No artworks to display yet. Use the filters on the left and click "
             "“Apply filters & search” to retrieve artworks from the Rijksmuseum API."
         )
+
+# ============================================================
+# Footer
+# ============================================================
+show_footer()

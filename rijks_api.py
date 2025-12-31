@@ -1,39 +1,58 @@
 # rijks_api.py
 """
 Utility functions for interacting with the Rijksmuseum API.
-Handles:
-- search query
-- sorting (artist, chronologic, achronologic, relevance)
-- object type filtering
-- best image URL selection
-- year extraction helper
+
+This module handles:
+- Search queries to the Rijksmuseum collection endpoint.
+- Sorting (artist, chronologic, achronologic, relevance) via API parameters.
+- Optional object type filtering (painting, print, drawing, etc.).
+- Helper to pick the best image URL for an artwork.
+- Helper to extract a numeric year from the API dating metadata.
 """
 
 import os
 import requests
 
-# IMPORTANT: set your API key here or load from environment variable
+# ============================================================
+# API configuration
+# ============================================================
+# IMPORTANT:
+# - In production, always prefer setting RIJKSMUSEUM_API_KEY as an environment variable.
+# - The default value here is just a placeholder for local development.
 API_KEY = os.getenv("RIJKSMUSEUM_API_KEY", "3VvngspN")
 BASE_URL = "https://www.rijksmuseum.nl/api/en/collection"
 
 
-# -----------------------------------------------------------
-# Extract year helper
-# -----------------------------------------------------------
+# ============================================================
+# Year extraction helper
+# ============================================================
 def extract_year(dating: dict) -> int | None:
     """
-    Extracts a numeric year from the 'dating' field of the API result.
-    Returns an integer year or None if extraction is not possible.
+    Extract a numeric year from the 'dating' field of an artwork.
+
+    Strategy:
+    - If 'year' is present and is an integer, use it directly.
+    - Otherwise, try to parse the first 4 characters of 'presentingDate'.
+
+    Parameters
+    ----------
+    dating : dict
+        'dating' field from the Rijksmuseum API artwork metadata.
+
+    Returns
+    -------
+    int | None
+        Parsed year as an integer, or None if extraction is not possible.
     """
     if not dating:
         return None
 
-    # If year is explicitly provided as int
+    # 1) Explicit integer year
     year = dating.get("year")
     if isinstance(year, int):
         return year
 
-    # Try parsing presentingDate (first 4 chars)
+    # 2) Try parsing presentingDate (first 4 characters)
     pd = dating.get("presentingDate")
     if isinstance(pd, str) and len(pd) >= 4 and pd[:4].isdigit():
         try:
@@ -44,17 +63,18 @@ def extract_year(dating: dict) -> int | None:
     return None
 
 
-# -----------------------------------------------------------
-# Best image URL helper (com normalização)
-# -----------------------------------------------------------
+# ============================================================
+# Image URL normalization helper (currently unused)
+# ============================================================
 def _normalize_rijks_url(url: str | None) -> str | None:
     """
-    Normaliza URLs vindas da API do Rijksmuseum.
+    Normalize URLs coming from the Rijksmuseum API.
 
-    - Se já for http/https → devolve como está.
-    - Se começar com '//' → prefixa com 'https:'.
-    - Se começar com '/'  → prefixa com domínio do Rijksmuseum.
-    - Caso contrário, tenta montar uma URL absoluta básica.
+    Rules:
+    - If the URL already starts with http/https → return as is.
+    - If it starts with '//' → prefix with 'https:'.
+    - If it starts with '/'  → prefix with Rijksmuseum domain.
+    - Otherwise, build a basic absolute URL using the Rijksmuseum domain.
     """
     if not url:
         return None
@@ -64,44 +84,70 @@ def _normalize_rijks_url(url: str | None) -> str | None:
         return url
 
     if url.startswith("//"):
-        # URL "protocol-relative" (começa com //)
+        # Protocol-relative URL (starts with //)
         return "https:" + url
 
     if url.startswith("/"):
-        # caminho absoluto no site do Rijksmuseum
+        # Absolute path on the Rijksmuseum website
         return "https://www.rijksmuseum.nl" + url
 
-    # último caso: algo tipo 'Static/Images/...'
+    # Fallback for relative paths like 'Static/Images/...'
     return "https://www.rijksmuseum.nl/" + url.lstrip("./")
 
 
+# ============================================================
+# Best image URL helper
+# ============================================================
 def get_best_image_url(art: dict) -> str | None:
     """
-    Returns the best available image URL from the API result, if any.
-    Prefers 'webImage' (largest), falling back to 'headerImage'.
+    Try to pick the best image URL available for a Rijksmuseum artwork.
+
+    Priority:
+        1. art["webImage"]["url"]      (larger image, intended for web use)
+        2. art["headerImage"]["url"]  (banner-style image)
+
+    Only returns URLs that look like valid http(s) URLs. If no suitable
+    image is found, returns None.
+
+    Parameters
+    ----------
+    art : dict
+        Single artwork record from the Rijksmuseum API.
+
+    Returns
+    -------
+    str | None
+        Best image URL or None if no valid URL is found.
     """
-    if not art:
+
+    def _safe_url(container: dict | None) -> str | None:
+        """Internal helper: safely extract a URL string from a nested dict."""
+        if not isinstance(container, dict):
+            return None
+        url = container.get("url")
+        if isinstance(url, str):
+            u = url.strip()
+            if u.startswith("http"):
+                return u
         return None
 
-    # tenta primeiro webImage
-    web_img = art.get("webImage")
-    if isinstance(web_img, dict):
-        normalized = _normalize_rijks_url(web_img.get("url"))
-        if normalized:
-            return normalized
+    # 1) webImage (primary)
+    url = _safe_url(art.get("webImage"))
+    if url:
+        return url
 
-    # depois headerImage
-    header_img = art.get("headerImage")
-    if isinstance(header_img, dict):
-        normalized = _normalize_rijks_url(header_img.get("url"))
-        if normalized:
-            return normalized
+    # 2) headerImage (fallback)
+    url = _safe_url(art.get("headerImage"))
+    if url:
+        return url
 
+    # No reliable image found
     return None
 
-# -----------------------------------------------------------
-# Main search function (SORTING REAL via API)
-# -----------------------------------------------------------
+
+# ============================================================
+# Main search function (sorting handled by API)
+# ============================================================
 def search_artworks(
     query: str,
     object_type: str | None = None,
@@ -110,34 +156,37 @@ def search_artworks(
     page: int = 1,
 ):
     """
-    Query the Rijksmuseum API and return a list of artworks and the total count.
+    Query the Rijksmuseum API and return a list of artworks plus the total count.
 
     Parameters
     ----------
     query : str
-        Search term (artist name, keyword, title, etc.)
+        Search term (artist name, keyword, title, etc.).
     object_type : str | None
-        Optional object type filter ("painting", "print", etc.)
+        Optional object type filter ("painting", "print", etc.).
+        If None, no object type filter is sent to the API.
     sort : str
         Sorting mode supported by the API:
-        'relevance', 'artist', 'chronologic', 'achronologic'
+        'relevance', 'artist', 'chronologic', 'achronologic'.
     page_size : int
-        Number of results to retrieve (API parameter 'ps').
+        Number of results to retrieve per API call (parameter 'ps').
     page : int
-        Page of results to request (API parameter 'p'). 1 = first page.
+        Page of results to request (parameter 'p'). 1 = first page.
 
     Returns
     -------
     list[dict], int
         artworks, total_count
-    """
 
+        - artworks: list of artwork dictionaries (API field 'artObjects').
+        - total_count: integer 'count' returned by the API (all matching records).
+    """
     params = {
         "key": API_KEY,
         "q": query,
         "ps": page_size,
-        "s": sort,       # ordenação real via API
-        "p": int(page),  # paginação via API
+        "s": sort,       # real sorting handled by the API
+        "p": int(page),  # API pagination (page number)
     }
 
     if object_type:
