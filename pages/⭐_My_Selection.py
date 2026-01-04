@@ -456,6 +456,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
         if not text:
             return y_start
 
+        # If there is not enough space, open a new page and draw a continuation header
         if y_start < margin_bottom + 40:
             draw_footer()
             c.showPage()
@@ -471,6 +472,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
 
         for line in wrap(text, width=90):
             if y < margin_bottom + 20:
+                # New page when we run out of vertical space
                 draw_footer()
                 c.showPage()
                 c.setFont("Helvetica-Bold", 12)
@@ -592,7 +594,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
                 )
                 image_drawn = True
             except Exception:
-                # If image fails, we simply continue with text only
+                # If the image fails, we simply continue with text only
                 pass
 
         # Basic metadata block beside the image
@@ -689,13 +691,29 @@ favorites: dict = st.session_state["favorites"]
 load_notes()
 notes: dict = st.session_state.get("notes", {})
 
-# Comparison candidates (shared with Compare Artworks page)
+# ============================================================
+# Comparison candidates helper
+# ============================================================
 if "compare_candidates" not in st.session_state:
+    # This will be kept in sync from favorites["_compare_candidate"] flags
     st.session_state["compare_candidates"] = []
 
-# ------------------------------------------------------------
 
+def get_compare_candidates_from_favorites(fav: dict) -> list[str]:
+    """
+    Return a list of objectNumbers that are marked as comparison candidates
+    in the favorites dictionary via the `_compare_candidate` flag.
+    """
+    return [
+        obj_num
+        for obj_num, art in fav.items()
+        if isinstance(art, dict) and art.get("_compare_candidate")
+    ]
+
+
+# ------------------------------------------------------------
 # One-time sidebar tip state
+# ------------------------------------------------------------
 if "sidebar_tip_dismissed" not in st.session_state:
     st.session_state["sidebar_tip_dismissed"] = False
 
@@ -889,7 +907,13 @@ elif "with notes" in selection_filter_label:
 else:
     selection_filter_code = "without_notes"
 
+# True when the user picks "Group by artist" in the sidebar
 group_by_artist = (gallery_view == "Group by artist")
+
+# Default: no comparison checkboxes in grouped view
+# (we will override this when group_by_artist is True)
+enable_compare_grouped = False
+
 cards_per_row = 5 if compact_mode else 3
 
 filters_active = any(
@@ -1169,19 +1193,23 @@ st.markdown("</div>", unsafe_allow_html=True)
 # Clear entire selection (local favorites file + session)
 # ============================================================
 if st.button("Clear my entire selection"):
+    # Clear in-memory favorites
     st.session_state["favorites"] = {}
+    favorites = {}
+
     try:
         with open(FAV_FILE, "w", encoding="utf-8") as f:
             json.dump({}, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
-    # When clearing everything, also reset comparison checkbox generation
+    # When clearing everything, also reset comparison checkbox key generation
     st.session_state["cmp_key_generation"] = st.session_state.get(
         "cmp_key_generation", 0
     ) + 1
 
     st.session_state["detail_art_id"] = None
+    st.session_state["compare_candidates"] = []
     st.success("Your selection has been cleared.")
     st.rerun()
 
@@ -1190,7 +1218,7 @@ if st.button("Clear my entire selection"):
 # Gallery + comparison logic helpers
 # ============================================================
 def get_year_for_sort(art: dict):
-    """Return a numeric year for sorting (when available)."""
+    """Return a numeric year for sorting (when available) to support year-based ordering."""
     dating = art.get("dating") or {}
     y = dating.get("year")
     if isinstance(y, int):
@@ -1205,7 +1233,7 @@ def get_year_for_sort(art: dict):
 
 
 def has_note_text(obj_num: str) -> bool:
-    """True if the artwork has a non-empty research note."""
+    """Return True if the artwork has a non-empty research note."""
     txt = notes.get(obj_num, "")
     return isinstance(txt, str) and txt.strip() != ""
 
@@ -1341,6 +1369,85 @@ else:
     else:
         st.caption("Active filters: none (full selection).")
 
+    # --------------------------------------------------------
+    # Cross-page comparison candidates: summary, filter & clear
+    # --------------------------------------------------------
+    # Canonical list of comparison candidates derived from favorites flags
+    candidate_ids = get_compare_candidates_from_favorites(favorites)
+    st.session_state["compare_candidates"] = candidate_ids
+
+    show_only_cmp = False
+
+    if candidate_ids:
+        with st.expander(
+            "🎯 Comparison candidates (from My Selection)", expanded=False
+        ):
+            st.write(
+                "These artworks are marked for cross-page comparison. "
+                "You can focus the gallery on them or clear all marks at once."
+            )
+
+            # Human-readable list of marked artworks
+            for obj_num in candidate_ids:
+                art = favorites.get(obj_num, {})
+                title = art.get("title", "Untitled")
+                maker = art.get("principalOrFirstMaker", "Unknown artist")
+                st.markdown(
+                    f"- **{title}** — *{maker}*  \n`{obj_num}`"
+                )
+
+            # Option: show only comparison candidates in the gallery
+            show_only_cmp = st.checkbox(
+                "Show only these artworks in the gallery below",
+                key="show_only_cmp_checkbox",
+            )
+
+            # Button: clear all comparison marks at once
+            if st.button("Clear all comparison marks", key="clear_all_cmp"):
+                # Remove the `_compare_candidate` flag from each favorite
+                for obj_num in candidate_ids:
+                    art = favorites.get(obj_num)
+                    if isinstance(art, dict):
+                        art.pop("_compare_candidate", None)
+                        favorites[obj_num] = art
+
+                    # Also reset the associated checkbox state in session_state
+                    cmp_key = f"cmp_candidate_{obj_num}"
+                    if cmp_key in st.session_state:
+                        st.session_state[cmp_key] = False
+
+                # Persist updated favorites to disk
+                st.session_state["favorites"] = favorites
+                try:
+                    with open(FAV_FILE, "w", encoding="utf-8") as f:
+                        json.dump(favorites, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+
+                # Clear in-memory list of comparison candidates
+                st.session_state["compare_candidates"] = []
+                st.success("All comparison marks have been cleared.")
+                st.rerun()
+    else:
+        st.caption(
+            "No artworks are currently marked for cross-page comparison."
+        )
+
+    # If the user wants to focus only on comparison candidates,
+    # restrict the base_items list accordingly
+    if show_only_cmp and candidate_ids:
+        base_items = [
+            (obj_num, art)
+            for obj_num, art in base_items
+            if obj_num in candidate_ids
+        ]
+
+        total_after_filters = len(base_items)
+        st.caption(
+            f"Gallery restricted to **{total_after_filters}** "
+            f"comparison candidate(s)."
+        )
+
     # =========================================================
     # Card rendering helper (used by both gallery modes)
     # =========================================================
@@ -1348,8 +1455,13 @@ else:
         """
         Render a grid of artwork cards.
 
-        - items: list of (objectNumber, art_dict)
-        - allow_compare: whether to show comparison checkboxes for these cards.
+        Parameters
+        ----------
+        items:
+            List of (objectNumber, art_dict) tuples to render as cards.
+        allow_compare:
+            If True, show comparison checkboxes that mark artworks
+            as comparison candidates (used across pages).
         """
         for start_idx in range(0, len(items), cards_per_row):
             row_items = items[start_idx : start_idx + cards_per_row]
@@ -1442,35 +1554,52 @@ else:
 
                     # Comparison candidate checkbox (shared with Compare Artworks page)
                     if allow_compare and obj_num:
-                        compare_candidates = st.session_state.setdefault(
-                            "compare_candidates", []
-                        )
-
-                        is_candidate = obj_num in compare_candidates
+                        # Comparison mark is stored inside the artwork dict
+                        is_candidate = bool(art.get("_compare_candidate"))
                         cmp_key = f"cmp_candidate_{obj_num}"
 
-                        label = "Mark for comparison (up to 4)"
+                        label = "Mark for comparison"
                         checked = st.checkbox(label, value=is_candidate, key=cmp_key)
 
-                        if checked and not is_candidate:
-                            # Add new candidate if we are under the max limit
-                            if len(compare_candidates) >= 4:
-                                st.warning(
-                                    "You can mark at most 4 artworks for comparison. "
-                                    "Unmark another one first."
+                        # If the checkbox state changed, update the favorite
+                        if checked != is_candidate:
+                            if checked:
+                                # Enforce a maximum of 4 comparison candidates
+                                current_candidates = get_compare_candidates_from_favorites(
+                                    favorites
                                 )
-                                # Keep the checkbox visually off on the next run
-                                st.session_state[cmp_key] = False
+                                if len(current_candidates) >= 4:
+                                    st.warning(
+                                        "You can mark at most 4 artworks for comparison. "
+                                        "Unmark another one first."
+                                    )
+                                    # Do not set the flag; keep previous state in favorites
+                                    # (checkbox visual state will be corrected on next rerun)
+                                else:
+                                    art["_compare_candidate"] = True
                             else:
-                                compare_candidates.append(obj_num)
+                                # Remove comparison marker from this artwork
+                                art.pop("_compare_candidate", None)
 
-                        elif not checked and is_candidate:
-                            # Remove from candidates
-                            compare_candidates = [
-                                cid for cid in compare_candidates if cid != obj_num
-                            ]
+                            # Update favorites in memory
+                            favorites[obj_num] = art
+                            st.session_state["favorites"] = favorites
 
-                        st.session_state["compare_candidates"] = compare_candidates
+                            # Persist change to disk
+                            try:
+                                with open(FAV_FILE, "w", encoding="utf-8") as f:
+                                    json.dump(
+                                        favorites,
+                                        f,
+                                        ensure_ascii=False,
+                                        indent=2,
+                                    )
+                            except Exception:
+                                # Never break the UI because of a write error
+                                pass
+
+                        # Note: we do not manually touch st.session_state[cmp_key]
+                        # outside of the widget creation to avoid StreamlitAPIException.
 
                     # Detail view button
                     if st.button("View details", key=f"detail_btn_{obj_num}"):
@@ -1499,6 +1628,7 @@ else:
                             },
                         )
 
+                        # Remove this artwork from favorites
                         favorites.pop(obj_num, None)
                         st.session_state["favorites"] = favorites
 
@@ -1534,6 +1664,9 @@ else:
     # =========================================================
     # MODE A) GROUP BY ARTIST
     # =========================================================
+    # Safety: default value in case something fails before the toggle is evaluated
+    enable_compare_grouped = False
+
     if group_by_artist:
         st.markdown("### 👤 Artists overview")
 
@@ -1559,6 +1692,13 @@ else:
             "Expand artist groups",
             value=False,
             help="Turn on to open all artist blocks by default.",
+        )
+
+        enable_compare_grouped = st.toggle(
+            "Enable comparison in grouped view",
+            value=False,
+            help="Allow selecting artworks for comparison inside artist groups.",
+            key="enable_compare_grouped_toggle",
         )
 
         # Group artworks by artist
@@ -1590,7 +1730,7 @@ else:
         )
 
         def sort_items_for_artist(items: list[tuple[str, dict]]):
-            """Sorting options inside each artist group."""
+            """Apply the selected within-artist sorting option to a list of items."""
             if sort_within_artist == "Title (A–Z)":
                 items.sort(
                     key=lambda it: (
@@ -1681,9 +1821,11 @@ else:
         st.markdown("### Mark artworks from your selection as comparison candidates")
         render_cards(page_items, allow_compare=True)
 
-        compare_candidates = st.session_state.get("compare_candidates", [])
+        # Recompute candidates from favorites (single source of truth) and
+        # store them in session_state for the Compare Artworks page
+        compare_candidates = get_compare_candidates_from_favorites(favorites)
+        st.session_state["compare_candidates"] = compare_candidates
         num_candidates = len(compare_candidates)
-
         if num_candidates == 0:
             st.info(
                 "Mark artworks above with **Mark for comparison** to prepare "
@@ -1694,6 +1836,7 @@ else:
                 f"Currently marked for comparison: **{num_candidates}** artwork(s). "
                 "Open the **Compare Artworks** page to run the side-by-side view."
             )
+
 # ============================================================
 # Detail view + research notes editor
 # ============================================================
@@ -1701,7 +1844,7 @@ detail_id = st.session_state.get("detail_art_id")
 if detail_id and detail_id in favorites:
     art = favorites[detail_id]
 
-    # Analytics: only log first time a given artwork is opened in detail view
+    # Analytics: only log the first time a given artwork is opened in detail view
     analytics_key = f"analytics_detail_opened_{detail_id}"
     if analytics_key not in st.session_state:
         st.session_state[analytics_key] = True

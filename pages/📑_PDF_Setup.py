@@ -1,435 +1,410 @@
-# pdf_setup.py
+# pages/PDF_Setup.py
+
 """
-PDF Setup & Customization
+PDF Setup page
 
-This page lets the user configure:
-- A global opening text for the PDF (introduction).
-- Per-artwork commentary to be included in the PDF.
-- Basic flags (include cover, intro, notes, commentary).
+This page configures how the illustrated PDF is generated from the
+"My Selection" page. It controls:
 
-The actual PDF generation happens on the "My selection" page,
-which reads these settings from pdf_meta.json.
+- Whether to include a cover page.
+- Whether to include a global opening text / introduction.
+- Whether to include research notes and artwork commentary.
+- Optional artwork-specific comments (per objectNumber).
+
+Settings are stored in a small JSON file (PDF_META_FILE) and are
+shared with the My_Selection page.
 """
 
-import os
 import json
-
 import streamlit as st
-from rijks_api import get_best_image_url
-from app_paths import FAV_FILE, NOTES_FILE, PDF_META_FILE
+
+from app_paths import PDF_META_FILE, FAV_FILE
+from analytics import track_event, track_event_once
+
 
 # ============================================================
-# CSS
+# CSS & footer
 # ============================================================
 def inject_custom_css() -> None:
-    """Inject CSS so this page matches the dark theme of the app."""
+    """Apply dark theme and basic layout for the PDF Setup page."""
     st.markdown(
         """
         <style>
-        .stApp {
-            background-color: #111111;
-            color: #f5f5f5;
-        }
+        .stApp { background-color: #111111; color: #f5f5f5; }
 
         div.block-container {
-            max-width: 1000px;
-            padding-top: 1.5rem;
-            padding-bottom: 3rem;
+            max-width: 900px;
+            padding-top: 1.4rem;
+            padding-bottom: 2.5rem;
         }
 
         section[data-testid="stSidebar"] {
             background-color: #181818 !important;
         }
 
-        h1, h2, h3 {
-            font-weight: 600;
+        h1, h2, h3 { font-weight: 600; }
+        h2 { font-size: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.75rem; }
+        h3 { font-size: 1.15rem; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+
+        div[data-testid="stMarkdownContainer"] a {
+            color: #ff9900 !important;
+            text-decoration: none;
+        }
+        div[data-testid="stMarkdownContainer"] a:hover {
+            text-decoration: underline;
         }
 
-        .pdf-pill {
+        .rijks-footer {
+            margin-top: 2.5rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #262626;
+            font-size: 0.8rem;
+            color: #aaaaaa;
+            text-align: center;
+        }
+
+        .rijks-panel {
+            background-color: #181818;
+            border-radius: 12px;
+            padding: 1.0rem 1.25rem 1.1rem 1.25rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            border: 1px solid #262626;
+            margin-bottom: 1.3rem;
+        }
+
+        .rijks-pill {
             display: inline-block;
             padding: 4px 10px;
             border-radius: 999px;
             background-color: #262626;
             color: #f5f5f5;
             font-size: 0.85rem;
-            margin-top: 0.5rem;
-            margin-bottom: 1rem;
+            margin-top: 0.25rem;
+            margin-bottom: 0.9rem;
         }
-        .pdf-pill strong {
-            color: #ff9900;
-        }
-
-        .pdf-artwork-box {
-            background-color: #181818;
-            border-radius: 12px;
-            padding: 0.8rem 0.9rem 0.9rem 0.9rem;
-            border: 1px solid #262626;
-            margin-bottom: 0.75rem;
-        }
-
-        .pdf-artwork-title {
-            font-weight: 600;
-            font-size: 0.98rem;
-            margin-bottom: 0.1rem;
-        }
-
-        .pdf-artwork-meta {
-            font-size: 0.85rem;
-            color: #c7c7c7;
-            margin-bottom: 0.35rem;
-        }
-
-        .pdf-note-tag {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 999px;
-            font-size: 0.7rem;
-            background-color: #262626;
-            color: #ffddaa;
-            border: 1px solid #444444;
-            margin-left: 0.25rem;
-        }
-
-        textarea {
-            font-size: 0.9rem !important;
-        }
-
-        .pdf-preview-card {
-            display: flex;
-            gap: 0.8rem;
-            align-items: flex-start;
-        }
-
-        .pdf-preview-left {
-            flex: 0 0 120px;
-        }
-
-        .pdf-preview-right {
-            flex: 1;
-        }
-
-        .pdf-preview-img {
-            width: 120px;
-            height: 90px;
-            object-fit: cover;
-            border-radius: 6px;
-        }
-
-        .pdf-preview-img--empty {
-            width: 120px;
-            height: 90px;
-            border-radius: 6px;
-            background-color: #202020;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            color: #aaaaaa;
-        }
-
-        .pdf-tag {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 999px;
-            font-size: 0.7rem;
-            background-color: #262626;
-            color: #f5f5f5;
-            border: 1px solid #444444;
-            margin-right: 0.25rem;
-        }
+        .rijks-pill strong { color: #ff9900; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
+
+def show_footer() -> None:
+    """Show a small footer acknowledging the Rijksmuseum API."""
+    st.markdown(
+        """
+        <div class="rijks-footer">
+            Rijksmuseum Explorer — prototype created for study & research purposes.<br>
+            Data & images provided by the Rijksmuseum API.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 inject_custom_css()
 
 
 # ============================================================
-# Helpers: load favorites, notes, pdf_meta
+# Helpers: load/save PDF meta + selection count
 # ============================================================
-def load_favorites() -> dict:
-    """Load favorites from JSON file, return empty dict if not available."""
-    if FAV_FILE.exists( ):
-        try:
-            with open(FAV_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
-    return {}
-
-
-def load_notes() -> dict:
-    """
-    Load research notes from NOTES_FILE.
-    Notes are not edited here, only displayed as a hint.
-    """
-    if FAV_FILE.exists( ):
-        try:
-            with open(NOTES_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
-    return {}
-
-
-def load_pdf_meta() -> dict:
-    """
-    Load PDF customization metadata from PDF_META_FILE.
-
-    Expected structure:
-        {
-            "opening_text": "...",
-            "include_cover": true,
-            "include_opening_text": true,
-            "include_notes": true,
-            "include_comments": true,
-            "artwork_comments": {
-                "objectNumber": "custom commentary text",
-                ...
-            }
-        }
-    """
-    if "pdf_meta" in st.session_state:
-        return st.session_state["pdf_meta"]
-
-    base = {
+def _default_pdf_meta() -> dict:
+    """Return the default PDF configuration structure."""
+    return {
         "opening_text": "",
         "include_cover": True,
         "include_opening_text": True,
         "include_notes": True,
         "include_comments": True,
-        "artwork_comments": {},
+        "artwork_comments": {},  # objectNumber -> text
     }
 
-    if FAV_FILE.exists( ):
+
+def load_pdf_meta() -> dict:
+    """
+    Load PDF configuration shared with the My_Selection page.
+
+    Data is cached in st.session_state["pdf_meta"].
+    """
+    if "pdf_meta" in st.session_state:
+        meta = st.session_state["pdf_meta"]
+        if isinstance(meta, dict):
+            # Make sure all expected keys exist
+            base = _default_pdf_meta()
+            base.update(meta)
+            st.session_state["pdf_meta"] = base
+            return base
+
+    base = _default_pdf_meta()
+
+    if PDF_META_FILE.exists():
         try:
             with open(PDF_META_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, dict):
-                    # Merge saved data on top of defaults
-                    base.update(data)
+            if isinstance(data, dict):
+                base.update(data)
         except Exception:
+            # PDF meta is optional; never break the app here
             pass
 
     st.session_state["pdf_meta"] = base
     return base
 
 
-def save_pdf_meta(pdf_meta: dict) -> None:
-    """Persist PDF customization metadata to disk and session_state."""
-    st.session_state["pdf_meta"] = pdf_meta
+def save_pdf_meta(meta: dict) -> None:
+    """Persist PDF configuration to disk and update session_state."""
+    base = _default_pdf_meta()
+    base.update(meta or {})
+    st.session_state["pdf_meta"] = base
+
     try:
         with open(PDF_META_FILE, "w", encoding="utf-8") as f:
-            json.dump(pdf_meta, f, ensure_ascii=False, indent=2)
+            json.dump(base, f, ensure_ascii=False, indent=2)
     except Exception:
-        # In a real app you might want to log this.
+        # Never break the UI because of a save error
         pass
+
+
+def load_selection_count() -> int:
+    """
+    Return the number of artworks currently in the global selection.
+
+    Uses st.session_state['favorites'] when available, falling back
+    to reading the local favorites file.
+    """
+    favorites = st.session_state.get("favorites")
+    if isinstance(favorites, dict):
+        return len(favorites)
+
+    try:
+        if FAV_FILE.exists():
+            with open(FAV_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return len(data) if isinstance(data, dict) else 0
+    except Exception:
+        pass
+
+    return 0
+
+
+# ============================================================
+# Analytics — page view (once per session)
+# ============================================================
+track_event_once(
+    event="page_view",
+    page="PDF_Setup",
+    once_key="page_view::PDF_Setup",
+    props={"has_existing_config": PDF_META_FILE.exists()},
+)
 
 
 # ============================================================
 # Page content
 # ============================================================
+st.markdown("## 📑 PDF setup")
 
-st.markdown("## 📄 PDF setup & customization")
+selection_count = load_selection_count()
+if selection_count:
+    st.markdown(
+        f'<span class="rijks-pill">Current selection: '
+        f'<strong>{selection_count}</strong> artwork(s)</span>',
+        unsafe_allow_html=True,
+    )
 
 st.write(
-    "Use this page to configure how your **PDF report** will look. "
-    "You can define an opening text for your selection and add specific commentary "
-    "for each artwork. These texts will be used when generating the illustrated PDF "
-    "on the **My selection** page."
+    "Use this page to configure how the illustrated PDF is generated from your "
+    "**My Selection** page. These settings affect the PDF built when you click "
+    "**Prepare PDF** on My Selection."
 )
 
-st.markdown(
-    '<div class="pdf-pill">'
-    '<strong>Status:</strong> PDF customization settings are stored locally '
-    'in <code>pdf_meta.json</code>.'
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-# Load data
-favorites = load_favorites()
-notes = load_notes()
 pdf_meta = load_pdf_meta()
 
-if not favorites:
-    st.info(
-        "You do not have any artworks in your selection yet. "
-        "Go to the **Rijksmuseum Explorer** page, mark a few artworks "
-        "as **In my selection**, and then return here to configure the PDF."
-    )
-    st.stop()
+# ------------------------------------------------------------
+# Main configuration panel
+# ------------------------------------------------------------
+st.markdown('<div class="rijks-panel">', unsafe_allow_html=True)
+st.markdown("### General PDF settings")
 
-artwork_comments: dict = pdf_meta.get("artwork_comments") or {}
-pdf_meta["artwork_comments"] = artwork_comments  # ensure it exists
+include_cover = st.checkbox(
+    "Include cover page",
+    value=bool(pdf_meta.get("include_cover", True)),
+    help="First page with title, generation date and total number of artworks.",
+)
 
+include_opening_text = st.checkbox(
+    "Include opening text / introduction",
+    value=bool(pdf_meta.get("include_opening_text", True)),
+    help="Adds an introductory text section at the beginning of the PDF.",
+)
 
-# ============================================================
-# Global PDF settings
-# ============================================================
-st.markdown("### 1. Global PDF settings")
+include_notes_flag = st.checkbox(
+    "Include research notes in each artwork page",
+    value=bool(pdf_meta.get("include_notes", True)),
+    help="When enabled, the PDF will include your notes from the My Selection page.",
+)
 
-col_flags = st.columns(2)
-
-with col_flags[0]:
-    include_cover = st.checkbox(
-        "Include cover page",
-        value=bool(pdf_meta.get("include_cover", True)),
-        help="Cover with title, date and basic information.",
-    )
-
-    include_opening_text = st.checkbox(
-        "Include opening text page",
-        value=bool(pdf_meta.get("include_opening_text", True)),
-        help="A dedicated page for your introduction or research context.",
-    )
-
-with col_flags[1]:
-    include_notes = st.checkbox(
-        "Include research notes",
-        value=bool(pdf_meta.get("include_notes", True)),
-        help="Include the notes you wrote in the **My selection** page.",
-    )
-
-    include_comments = st.checkbox(
-        "Include commentary per artwork",
-        value=bool(pdf_meta.get("include_comments", True)),
-        help="Include the custom commentary defined below for each artwork.",
-    )
-
-pdf_meta["include_cover"] = include_cover
-pdf_meta["include_opening_text"] = include_opening_text
-pdf_meta["include_notes"] = include_notes
-pdf_meta["include_comments"] = include_comments
-
-st.markdown("#### Opening text for the PDF (optional)")
+include_comments_flag = st.checkbox(
+    "Include commentary text in each artwork page",
+    value=bool(pdf_meta.get("include_comments", True)),
+    help="Optional commentary separate from research notes (see section below).",
+)
 
 opening_text = st.text_area(
-    "This text will appear as an introductory page in the PDF.",
+    "Opening text (optional introduction)",
     value=pdf_meta.get("opening_text", ""),
-    height=180,
+    height=200,
     help=(
-        "Use this space to explain the aim of your selection, "
-        "your research questions, or any contextual information "
-        "you want to appear at the beginning of the PDF."
-    ),
-)
-pdf_meta["opening_text"] = opening_text
-
-# ============================================================
-# Per-artwork commentary
-# ============================================================
-st.markdown("### 2. Commentary per artwork")
-
-st.write(
-    "You can add a short commentary for each artwork. "
-    "This commentary will appear on the same page as the artwork in the PDF, "
-    "together with basic metadata and (optionally) your research notes."
-)
-
-st.caption(
-    "Tip: use this for your own interpretation, classroom notes, or references "
-    "to other sources. It is separate from the research notes used inside the app."
-)
-
-# Sort artworks by artist then title for a stable order
-sorted_items = sorted(
-    favorites.items(),
-    key=lambda item: (
-        (item[1] or {}).get("principalOrFirstMaker", ""),
-        (item[1] or {}).get("title", ""),
+        "This text appears near the beginning of the PDF as an introduction. "
+        "You can describe the purpose of this selection, the research context, "
+        "or any narrative you want to add."
     ),
 )
 
+st.markdown("</div>", unsafe_allow_html=True)
+
 # ------------------------------------------------------------
-# Preview + commentary editor: one block per artwork
+# Artwork-specific comments (advanced)
 # ------------------------------------------------------------
-for obj_num, art in sorted_items:
-    title = art.get("title", "Untitled")
-    maker = art.get("principalOrFirstMaker", "Unknown artist")
-    dating = art.get("dating", {}) or {}
-    year = dating.get("year") or dating.get("presentingDate") or ""
-    img_url = get_best_image_url(art)
+st.markdown('<div class="rijks-panel">', unsafe_allow_html=True)
+st.markdown("### Artwork-specific comments (optional)")
 
-    # Does this artwork have research notes?
-    raw_note = notes.get(obj_num, "")
-    has_note = isinstance(raw_note, str) and raw_note.strip() != ""
+artwork_comments = dict(pdf_meta.get("artwork_comments") or {})
 
-    # HTML snippet for the notes tag (only if there are notes)
-    note_tag = ""
-    if has_note:
-        note_tag = '<span class="pdf-note-tag">📝 Has research notes</span>'
+if artwork_comments:
+    st.caption("Existing comments:")
+    for obj_id, txt in artwork_comments.items():
+        short_txt = (txt[:120] + "…") if isinstance(txt, str) and len(txt) > 120 else txt
+        st.write(f"- **{obj_id}** — {short_txt}")
+else:
+    st.caption("No artwork-specific comments defined yet.")
 
-    # Small snippet for the image area
-    if img_url:
-        image_html = f'<img src="{img_url}" class="pdf-preview-img" />'
-    else:
-        image_html = (
-            '<div class="pdf-preview-img pdf-preview-img--empty">'
-            "No image available"
-            "</div>"
+st.markdown("---")
+
+obj_id_input = st.text_input(
+    "Artwork ID (objectNumber)",
+    value="",
+    help="Use the object ID as shown on the My Selection page (e.g. SK-A-3452).",
+    key="pdf_comment_object_id",
+)
+
+comment_text_input = st.text_area(
+    "Comment for this artwork",
+    value="",
+    height=140,
+    help=(
+        "Optional commentary that will appear in the PDF for this specific artwork, "
+        "in addition to your research notes."
+    ),
+    key="pdf_comment_text",
+)
+
+col_c1, col_c2 = st.columns(2)
+
+with col_c1:
+    if st.button("Save / update comment for this artwork"):
+        obj_id = obj_id_input.strip()
+        if not obj_id:
+            st.warning("Please enter a valid artwork ID (objectNumber).")
+        else:
+            artwork_comments[obj_id] = comment_text_input.strip()
+            pdf_meta["artwork_comments"] = artwork_comments
+            save_pdf_meta(pdf_meta)
+
+            track_event(
+                event="pdf_comment_saved",
+                page="PDF_Setup",
+                props={
+                    "object_id": obj_id,
+                    "comment_len": len(comment_text_input.strip()),
+                    "total_comments": len(artwork_comments),
+                },
+            )
+
+            st.success(f"Comment saved for artwork {obj_id}.")
+            st.experimental_rerun()
+
+with col_c2:
+    if st.button("Remove comment for this artwork"):
+        obj_id = obj_id_input.strip()
+        if not obj_id:
+            st.warning("Please enter an artwork ID to remove its comment.")
+        elif obj_id not in artwork_comments:
+            st.info("There is no saved comment for this artwork ID.")
+        else:
+            artwork_comments.pop(obj_id, None)
+            pdf_meta["artwork_comments"] = artwork_comments
+            save_pdf_meta(pdf_meta)
+
+            track_event(
+                event="pdf_comment_removed",
+                page="PDF_Setup",
+                props={"object_id": obj_id, "total_comments": len(artwork_comments)},
+            )
+
+            st.success(f"Comment removed for artwork {obj_id}.")
+            st.experimental_rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ------------------------------------------------------------
+# Save / reset controls
+# ------------------------------------------------------------
+st.markdown('<div class="rijks-panel">', unsafe_allow_html=True)
+st.markdown("### Save or reset PDF configuration")
+
+col_s1, col_s2 = st.columns(2)
+
+with col_s1:
+    if st.button("💾 Save PDF configuration", use_container_width=True):
+        updated = dict(pdf_meta)
+        updated["include_cover"] = bool(include_cover)
+        updated["include_opening_text"] = bool(include_opening_text)
+        updated["include_notes"] = bool(include_notes_flag)
+        updated["include_comments"] = bool(include_comments_flag)
+        updated["opening_text"] = opening_text
+        # Keep artwork_comments as edited above
+        updated["artwork_comments"] = artwork_comments
+
+        save_pdf_meta(updated)
+
+        track_event(
+            event="pdf_meta_saved",
+            page="PDF_Setup",
+            props={
+                "include_cover": bool(include_cover),
+                "include_opening_text": bool(include_opening_text),
+                "include_notes": bool(include_notes_flag),
+                "include_comments": bool(include_comments_flag),
+                "has_opening_text": bool(opening_text.strip()),
+                "num_artwork_comments": len(artwork_comments),
+            },
         )
 
-    # Get existing commentary (if any)
-    existing_comment = artwork_comments.get(obj_num, "")
+        st.success("PDF configuration saved. You can now prepare the PDF on the My Selection page.")
 
-    # Layout: preview card + textarea logo abaixo
-    card_html = (
-        '<div class="pdf-artwork-box">'
-        '  <div class="pdf-preview-card">'
-        '    <div class="pdf-preview-left">'
-        f'      {image_html}'
-        '    </div>'
-        '    <div class="pdf-preview-right">'
-        f'      <div class="pdf-artwork-title">{title}</div>'
-        '      <div class="pdf-artwork-meta">'
-        f'        {maker}{(" — " + str(year)) if year else ""}<br/>'
-        f'        <span class="pdf-tag">ID: {obj_num}</span>'
-        f'        {note_tag}'
-        '      </div>'
-        '    </div>'
-        '  </div>'
-        '</div>'
-    )
+with col_s2:
+    if st.button("↩️ Reset to default settings", use_container_width=True):
+        base = _default_pdf_meta()
+        save_pdf_meta(base)
 
-    st.markdown(card_html, unsafe_allow_html=True)
+        track_event(
+            event="pdf_meta_reset",
+            page="PDF_Setup",
+            props={},
+        )
 
-    # Commentary editor for this artwork
-    comment_text = st.text_area(
-        "Commentary for this artwork (optional):",
-        value=existing_comment,
-        height=110,
-        key=f"comment_{obj_num}",
-    )
+        st.success("PDF settings reset to defaults.")
+        st.experimental_rerun()
 
-    # Update in-memory dict: keep only non-empty comments
-    if comment_text.strip():
-        artwork_comments[obj_num] = comment_text
-    else:
-        artwork_comments.pop(obj_num, None)
+st.markdown("</div>", unsafe_allow_html=True)
 
-# Ensure comments are stored back into pdf_meta
-pdf_meta["artwork_comments"] = artwork_comments
-
+# ------------------------------------------------------------
+# Raw JSON (debug / advanced)
+# ------------------------------------------------------------
+with st.expander("🔍 View raw PDF configuration (advanced)", expanded=False):
+    st.json(st.session_state.get("pdf_meta", {}))
 
 # ============================================================
-# Save button
+# Footer
 # ============================================================
-st.markdown("---")
-if st.button("💾 Save PDF settings"):
-    save_pdf_meta(pdf_meta)
-    st.success(
-        "PDF customization settings saved. You can now go to the "
-        "**My selection** page and generate the PDF using these options."
-    )
-
-st.caption(
-    "Note: PDF settings are stored locally in the application folder. "
-    "They will be reused the next time you open the app, as long as the files "
-    "are kept together."
-)
+show_footer()

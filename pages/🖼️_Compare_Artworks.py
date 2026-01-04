@@ -22,7 +22,13 @@ def load_favorites_from_disk() -> dict:
             return {}
     return {}
 
-
+def get_compare_candidates_from_favorites(favorites: dict) -> list[str]:
+    """Return objectNumbers marked as comparison candidates inside favorites."""
+    return [
+        obj_id
+        for obj_id, art in favorites.items()
+        if isinstance(art, dict) and art.get("_compare_candidate")
+    ]
 # ============================================================
 # Compare Artworks page (uses My Selection only)
 # ============================================================
@@ -36,8 +42,8 @@ st.write(
 
 st.caption(
     "First, go to the **My Selection** page and mark up to **4 artworks** as "
-    "comparison candidates. They will appear here so you can pick two to "
-    "compare in detail."
+    "comparison candidates using **Mark for comparison (up to 4)**. "
+    "Those artworks will appear here so you can pick two to compare in detail."
 )
 
 # Make sure favorites are available in session_state
@@ -48,23 +54,9 @@ favorites = st.session_state.get("favorites", {})
 if not isinstance(favorites, dict):
     favorites = {}
 
-# Comparison candidates come from My Selection
-compare_candidates = st.session_state.get("compare_candidates", [])
-compare_candidates = [
-    cid for cid in compare_candidates if isinstance(cid, str) and cid in favorites
-]
+# Comparison candidates now come from favorites metadata
+compare_candidates = get_compare_candidates_from_favorites(favorites)
 st.session_state["compare_candidates"] = compare_candidates
-
-# Analytics: page view (once per session)
-track_event_once(
-    event="page_view",
-    page="Compare",
-    once_key="page_view::Compare",
-    props={
-        "candidate_count": len(compare_candidates),
-        "favorites_count": len(favorites),
-    },
-)
 
 # Guards
 if not favorites:
@@ -79,21 +71,22 @@ if not compare_candidates:
     st.info(
         "No comparison candidates have been marked yet. "
         "Go to **My Selection**, mark up to **4 artworks** as "
-        "*Mark for comparison*, and then come back to this page."
+        "*Mark for comparison (up to 4)*, and then come back to this page."
     )
     st.stop()
 
 # ============================================================
 # Candidate thumbnails
 # ============================================================
+st.markdown("### Candidates from My Selection")
+
 candidate_arts = [
     (obj_id, favorites[obj_id])
     for obj_id in compare_candidates
     if obj_id in favorites
 ]
 
-st.markdown("### Candidates from My Selection")
-
+# Linha de miniaturas
 cols = st.columns(len(candidate_arts))
 for col, (obj_id, art) in zip(cols, candidate_arts):
     with col:
@@ -107,30 +100,91 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         maker = art.get("principalOrFirstMaker", "Unknown artist")
         st.markdown(f"**{title}**  \n*{maker}*  \n`{obj_id}`")
 
+# Botão para limpar TODAS as marcas de comparação na My Selection
+st.markdown("---")
+if st.button("Clear comparison marks in My Selection"):
+    # Apaga a lista de candidatos
+    old_candidates = st.session_state.get("compare_candidates", [])
+    st.session_state["compare_candidates"] = []
+
+    # Também remove os checkboxes marcados na My Selection (chaves cmp_candidate_*)
+    for cid in old_candidates:
+        key = f"cmp_candidate_{cid}"
+        if key in st.session_state:
+            del st.session_state[key]
+
+    # Limpa o par atual (se houver) e reroda
+    if "cmp_multiselect" in st.session_state:
+        del st.session_state["cmp_multiselect"]
+
+    st.success("All comparison marks have been cleared in **My Selection**.")
+    st.rerun()
+
 st.markdown("---")
 
-# ============================================================
-# Choose two artworks to compare
-# ============================================================
 st.markdown("### Choose two artworks to compare")
 
+# Linha de botões de limpeza
+col_btn_pair, col_btn_all = st.columns(2)
 
-def format_label(obj_id: str) -> str:
-    art = favorites.get(obj_id, {})
-    title = art.get("title", "Untitled")
-    maker = art.get("principalOrFirstMaker", "Unknown artist")
-    return f"{maker} — {title} [{obj_id}]"
+with col_btn_pair:
+    if st.button("Clear current pair (keep candidates)", key="btn_clear_pair"):
+        # Limpa apenas o par escolhido, mas mantém as obras marcadas em My Selection
+        st.session_state["cmp_multiselect"] = []
+        st.rerun()
 
+with col_btn_all:
+    if st.button("Clear comparison marks in My Selection", key="btn_clear_all_marks"):
+        # Limpa a flag _compare_candidate em todas as obras
+        changed = False
+        for obj_id, art in favorites.items():
+            if isinstance(art, dict) and art.get("_compare_candidate"):
+                art.pop("_compare_candidate", None)
+                favorites[obj_id] = art
+                changed = True
+
+        if changed:
+            st.session_state["favorites"] = favorites
+            try:
+                with open(FAV_FILE, "w", encoding="utf-8") as f:
+                    json.dump(favorites, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+        # Limpa lista de candidatos e o multiselect
+        st.session_state["compare_candidates"] = []
+        st.session_state["cmp_multiselect"] = []
+
+        # Remove também os estados dos checkboxes em My Selection
+        keys_to_delete = [
+            k for k in st.session_state.keys()
+            if k.startswith("cmp_candidate_")
+        ]
+        for k in keys_to_delete:
+            del st.session_state[k]
+
+        st.success("All comparison marks were cleared. You can now mark new candidates in My Selection.")
+        st.rerun()
+
+# Agora definimos o valor padrão do multiselect
+current_saved = st.session_state.get("cmp_multiselect", [])
+if current_saved:
+    default_selected = current_saved
+else:
+    default_selected = (
+        compare_candidates[:2] if len(compare_candidates) >= 2 else compare_candidates
+    )
 
 selected_ids = st.multiselect(
     "Pick exactly two artworks:",
     options=compare_candidates,
-    default=(
-        compare_candidates[:2] if len(compare_candidates) >= 2 else compare_candidates
-    ),
-    format_func=format_label,
+    default=default_selected,
+    key="cmp_multiselect",
+    format_func=lambda obj_id: format_label(obj_id),
 )
 
+num_selected = len(selected_ids)
+st.write(f"Currently selected for comparison: **{num_selected}**")
 num_selected = len(selected_ids)
 st.write(f"Currently selected for comparison: **{num_selected}**")
 
