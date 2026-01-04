@@ -8,10 +8,11 @@ from analytics import track_event
 
 
 # ============================================================
-# Helpers to load favorites and comparison candidates
+# Helpers to load favorites & comparison candidates
 # ============================================================
+
 def load_favorites_from_disk() -> dict:
-    """Load favorites from the local JSON file if not already in session_state."""
+    """Load favorites from the local JSON file if needed."""
     if FAV_FILE.exists():
         try:
             with open(FAV_FILE, "r", encoding="utf-8") as f:
@@ -27,7 +28,8 @@ def get_compare_candidates_from_favorites(favorites: dict) -> list[str]:
     """
     Return objectNumbers marked as comparison candidates inside favorites.
 
-    We use the metadata flag `_compare_candidate` stored in each artwork dict.
+    We use the metadata flag `_compare_candidate` attached to each artwork
+    (set on the 'My Selection' page).
     """
     return [
         obj_id
@@ -39,10 +41,11 @@ def get_compare_candidates_from_favorites(favorites: dict) -> list[str]:
 # ============================================================
 # Compare Artworks page (uses My Selection only)
 # ============================================================
+
 st.markdown("## 🖼️ Compare Artworks")
 
 st.write(
-    "This page lets you compare **two artworks side by side**, using only the "
+    "This page lets you compare **two artworks side by side** using only the "
     "artworks stored in your **My Selection**."
 )
 
@@ -53,7 +56,7 @@ st.caption(
 )
 
 # ------------------------------------------------------------
-# Make sure favorites are available in session_state
+# Ensure favorites are available in session state
 # ------------------------------------------------------------
 if "favorites" not in st.session_state:
     st.session_state["favorites"] = load_favorites_from_disk()
@@ -64,12 +67,10 @@ if not isinstance(favorites, dict):
 
 # Comparison candidates now come from favorites metadata
 compare_candidates = get_compare_candidates_from_favorites(favorites)
-# Drop any candidate IDs no longer present in favorites
-compare_candidates = [cid for cid in compare_candidates if cid in favorites]
 st.session_state["compare_candidates"] = compare_candidates
 
 # ------------------------------------------------------------
-# Guards (no favorites / no candidates)
+# Guards for empty states
 # ------------------------------------------------------------
 if not favorites:
     st.warning(
@@ -88,9 +89,17 @@ if not compare_candidates:
     st.stop()
 
 # ============================================================
-# Candidate thumbnails + checkboxes for the comparison pair
+# Candidate thumbnails + pair checkboxes
 # ============================================================
+
 st.markdown("### Candidates from My Selection")
+
+# Generation key for pair checkboxes:
+# each time we want to reset all checkboxes, we simply bump this counter.
+if "cmp_pair_generation" not in st.session_state:
+    st.session_state["cmp_pair_generation"] = 0
+
+pair_gen = st.session_state["cmp_pair_generation"]
 
 candidate_arts = [
     (obj_id, favorites[obj_id])
@@ -99,8 +108,140 @@ candidate_arts = [
 ]
 
 cols = st.columns(len(candidate_arts))
+
 for col, (obj_id, art) in zip(cols, candidate_arts):
     with col:
+        img_url = get_best_image_url(art)
+        if img_url:
+            try:
+                st.image(img_url, use_container_width=True)
+            except Exception:
+                st.write("Error displaying image.")
+        else:
+            st.caption("No public image available.")
+
+        title = art.get("title", "Untitled")
+        maker = art.get("principalOrFirstMaker", "Unknown artist")
+        dating = art.get("dating", {}) or {}
+        date = dating.get("presentingDate") or dating.get("year") or ""
+        obj_label = art.get("objectNumber") or obj_id
+
+        st.markdown(f"**{title}**")
+        st.markdown(f"*{maker}*")
+        if date:
+            st.caption(str(date))
+        st.code(obj_label, language=None)
+
+        # Checkbox to include this artwork in the comparison pair.
+        # IMPORTANT: the key includes the generation so we can reset all
+        # checkboxes by bumping `cmp_pair_generation` (no direct assignment).
+        checkbox_key = f"cmp_pair_{obj_id}_{pair_gen}"
+        st.checkbox(
+            "Include in comparison pair",
+            key=checkbox_key,
+        )
+
+st.markdown("---")
+
+# ============================================================
+# Controls for the current pair
+# ============================================================
+
+st.markdown("### Choose two artworks to compare")
+
+# Read which candidates are currently checked for this generation
+selected_ids = [
+    obj_id
+    for obj_id in compare_candidates
+    if st.session_state.get(f"cmp_pair_{obj_id}_{pair_gen}", False)
+]
+
+num_selected = len(selected_ids)
+st.caption(f"Currently selected for comparison: **{num_selected}**")
+
+# ---- Pair control buttons (left) and global clear (right) ----
+col_btn_pair, col_btn_all = st.columns(2)
+
+with col_btn_pair:
+    if st.button("Clear current pair (keep candidates)"):
+        # We DO NOT touch any checkbox keys directly.
+        # Instead, we bump the generation id so that all checkboxes
+        # get new keys and start unchecked on the next run.
+        st.session_state["cmp_pair_generation"] = pair_gen + 1
+        st.rerun()
+
+with col_btn_all:
+    if st.button("Clear comparison marks in My Selection"):
+        # Remove the `_compare_candidate` flag from all artworks in favorites
+        changed = False
+        for obj_id, art in favorites.items():
+            if isinstance(art, dict) and art.get("_compare_candidate"):
+                art.pop("_compare_candidate", None)
+                favorites[obj_id] = art
+                changed = True
+
+        if changed:
+            st.session_state["favorites"] = favorites
+            try:
+                with open(FAV_FILE, "w", encoding="utf-8") as f:
+                    json.dump(favorites, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+        # Reset candidates + pair generation
+        st.session_state["compare_candidates"] = []
+        st.session_state["cmp_pair_generation"] = pair_gen + 1
+
+        st.success(
+            "All comparison marks were cleared. "
+            "You can now mark new candidates in **My Selection**."
+        )
+        st.rerun()
+
+# ============================================================
+# Pair validation and side-by-side rendering
+# ============================================================
+
+# If more than 2 are selected, we still show only the first 2
+# but warn the user so they can adjust.
+if num_selected < 2:
+    st.info("Select **two** artworks above to see the side-by-side comparison.")
+    st.stop()
+
+if num_selected > 2:
+    st.warning(
+        "You selected more than **2** artworks. "
+        "Only the first two checked artworks will be used below."
+    )
+
+# Use only the first 2 IDs for the actual comparison
+id_a, id_b = selected_ids[:2]
+art_a = favorites.get(id_a)
+art_b = favorites.get(id_b)
+
+if not art_a or not art_b:
+    st.error("Could not retrieve both artworks for comparison.")
+    st.stop()
+
+# Analytics: log each time a pair is displayed
+track_event(
+    event="compare_clicked",
+    page="Compare",
+    props={
+        "object_id_a": id_a,
+        "object_id_b": id_b,
+    },
+)
+
+st.markdown("### 🔍 Side-by-side comparison")
+col_a, col_b = st.columns(2)
+
+
+def render_side(label: str, obj_id: str, art: dict, container):
+    """Render one side of the comparison (thumbnail + metadata)."""
+    with container:
+        st.subheader(label)
+
         img_url = get_best_image_url(art)
         if img_url:
             try:
@@ -112,170 +253,18 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
 
         title = art.get("title", "Untitled")
         maker = art.get("principalOrFirstMaker", "Unknown artist")
+        dating = art.get("dating", {}) or {}
+        date = dating.get("presentingDate") or dating.get("year")
+        link = art.get("links", {}).get("web")
 
-        st.markdown(f"**{title}**  \n*{maker}*  \n`{obj_id}`")
+        st.write(f"**Title:** {title}")
+        st.write(f"**Artist:** {maker}")
+        if date:
+            st.write(f"**Date:** {date}")
+        st.write(f"**Object ID:** {obj_id}")
+        if link:
+            st.markdown(f"[View on Rijksmuseum website]({link})")
 
-        # Checkbox for choosing the pair **on this page**
-        checkbox_key = f"cmp_pair_{obj_id}"
-        current_flag = bool(st.session_state.get(checkbox_key, False))
 
-        st.checkbox(
-            "Include in comparison pair",
-            value=current_flag,
-            key=checkbox_key,
-        )
-
-st.markdown("---")
-
-# ============================================================
-# Current pair status
-# ============================================================
-st.markdown("### Choose two artworks to compare")
-
-pair_ids = [
-    obj_id
-    for obj_id in compare_candidates
-    if st.session_state.get(f"cmp_pair_{obj_id}", False)
-]
-
-num_selected = len(pair_ids)
-st.caption(f"Currently selected for comparison: **{num_selected}**")
-
-# ============================================================
-# Controls in a compact expander (to reduce visual noise)
-# ============================================================
-with st.expander("Pair & comparison controls", expanded=False):
-    st.write(
-        "Use these controls when you want to reset the pair here or clear all "
-        "comparison marks in **My Selection**."
-    )
-
-    col_btn_pair, col_btn_all = st.columns(2)
-
-    with col_btn_pair:
-        if st.button("Clear current pair (keep candidates)", key="btn_clear_pair"):
-            # Clear only the checkboxes for the current pair selection on this page
-            for obj_id in compare_candidates:
-                checkbox_key = f"cmp_pair_{obj_id}"
-                if checkbox_key in st.session_state:
-                    st.session_state[checkbox_key] = False
-
-            # Old multiselect key from previous versions can be removed safely
-            if "cmp_multiselect" in st.session_state:
-                del st.session_state["cmp_multiselect"]
-
-            st.rerun()
-
-    with col_btn_all:
-        if st.button(
-            "Clear comparison marks in My Selection", key="btn_clear_all_marks"
-        ):
-            """
-            This button:
-            - Clears the `_compare_candidate` flag in favorites (all artworks).
-            - Saves the updated favorites to disk.
-            - Clears all 'cmp_pair_*' checkbox states on this page.
-            - Clears 'cmp_candidate_*' states that might exist from My Selection.
-            """
-            changed = False
-            for obj_id, art in favorites.items():
-                if isinstance(art, dict) and art.get("_compare_candidate"):
-                    art.pop("_compare_candidate", None)
-                    favorites[obj_id] = art
-                    changed = True
-
-            if changed:
-                st.session_state["favorites"] = favorites
-                try:
-                    with open(FAV_FILE, "w", encoding="utf-8") as f:
-                        json.dump(favorites, f, ensure_ascii=False, indent=2)
-                except Exception:
-                    pass
-
-            # Clear comparison candidates list and any local pair selection
-            st.session_state["compare_candidates"] = []
-
-            # Clear all cmp_pair_* keys (this page)
-            keys_to_delete = [
-                k for k in st.session_state.keys()
-                if k.startswith("cmp_pair_")
-            ]
-            for k in keys_to_delete:
-                del st.session_state[k]
-
-            # Clear any cmp_candidate_* keys used in My Selection
-            keys_to_delete = [
-                k for k in st.session_state.keys()
-                if k.startswith("cmp_candidate_")
-            ]
-            for k in keys_to_delete:
-                del st.session_state[k]
-
-            # Old multiselect state can be removed as well
-            if "cmp_multiselect" in st.session_state:
-                del st.session_state["cmp_multiselect"]
-
-            st.success(
-                "All comparison marks were cleared. "
-                "You can now mark new candidates in **My Selection**."
-            )
-            st.rerun()
-
-# ============================================================
-# Render comparison (or guidance messages)
-# ============================================================
-if num_selected < 2:
-    st.info("Select two artworks above to see the side-by-side comparison.")
-elif num_selected > 2:
-    st.warning("Please keep **exactly 2** artworks selected for the comparison pair.")
-else:
-    # Exactly two artworks selected → render comparison
-    id_a, id_b = pair_ids
-    art_a = favorites.get(id_a)
-    art_b = favorites.get(id_b)
-
-    if not art_a or not art_b:
-        st.error("Could not retrieve both artworks for comparison.")
-    else:
-        # Analytics: each time this pair is shown
-        track_event(
-            event="compare_clicked",
-            page="Compare",
-            props={
-                "object_id_a": id_a,
-                "object_id_b": id_b,
-            },
-        )
-
-        st.markdown("### 🔍 Side-by-side comparison")
-        col_a, col_b = st.columns(2)
-
-        def render_side(label: str, obj_id: str, art: dict, container):
-            """Render one side of the comparison."""
-            with container:
-                st.subheader(label)
-                img_url = get_best_image_url(art)
-                if img_url:
-                    try:
-                        st.image(img_url, use_container_width=True)
-                    except Exception:
-                        st.write("Error displaying image.")
-                else:
-                    st.caption("No public image available for this artwork via API.")
-
-                title = art.get("title", "Untitled")
-                maker = art.get("principalOrFirstMaker", "Unknown artist")
-                dating = art.get("dating", {}) or {}
-                date = dating.get("presentingDate") or dating.get("year")
-                link = art.get("links", {}).get("web")
-
-                st.write(f"**Title:** {title}")
-                st.write(f"**Artist:** {maker}")
-                if date:
-                    st.write(f"**Date:** {date}")
-                st.write(f"**Object ID:** {obj_id}")
-                if link:
-                    st.markdown(f"[View on Rijksmuseum website]({link})")
-
-        render_side("Artwork A", id_a, art_a, col_a)
-        render_side("Artwork B", id_b, art_b, col_b)
+render_side("Artwork A", id_a, art_a, col_a)
+render_side("Artwork B", id_b, art_b, col_b)
