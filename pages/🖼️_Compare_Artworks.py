@@ -175,6 +175,28 @@ else:
         compare_candidates[:2] if len(compare_candidates) >= 2 else compare_candidates
     )
 
+def format_label(obj_id: str) -> str:
+    """
+    Return a human-readable label for an artwork ID in the compare multiselect.
+
+    The label includes:
+    - title
+    - artist
+    - objectNumber in square brackets
+    """
+    # Read favorites directly from session_state to avoid order-of-definition issues
+    favorites = st.session_state.get("favorites", {})
+    if not isinstance(favorites, dict):
+        favorites = {}
+
+    art = favorites.get(obj_id, {}) if isinstance(obj_id, str) else {}
+
+    title = art.get("title", "Untitled")
+    maker = art.get("principalOrFirstMaker", "Unknown artist")
+
+    # Final label shown in the dropdown
+    return f"{title} — {maker} [{obj_id}]"
+
 selected_ids = st.multiselect(
     "Pick exactly two artworks:",
     options=compare_candidates,
@@ -183,8 +205,6 @@ selected_ids = st.multiselect(
     format_func=lambda obj_id: format_label(obj_id),
 )
 
-num_selected = len(selected_ids)
-st.write(f"Currently selected for comparison: **{num_selected}**")
 num_selected = len(selected_ids)
 st.write(f"Currently selected for comparison: **{num_selected}**")
 
