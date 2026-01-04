@@ -4,7 +4,7 @@ import streamlit as st
 
 from app_paths import FAV_FILE
 from rijks_api import get_best_image_url
-from analytics import track_event, track_event_once
+from analytics import track_event
 
 
 # ============================================================
@@ -98,7 +98,6 @@ candidate_arts = [
     if obj_id in favorites
 ]
 
-# One column per candidate (small grid of cards)
 cols = st.columns(len(candidate_arts))
 for col, (obj_id, art) in zip(cols, candidate_arts):
     with col:
@@ -109,7 +108,7 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
             except Exception:
                 st.write("Error displaying image.")
         else:
-            st.caption("No public image available via API.")
+            st.caption("No public image available for this artwork via API.")
 
         title = art.get("title", "Untitled")
         maker = art.get("principalOrFirstMaker", "Unknown artist")
@@ -117,7 +116,6 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         st.markdown(f"**{title}**  \n*{maker}*  \n`{obj_id}`")
 
         # Checkbox for choosing the pair **on this page**
-        # (independent from being a candidate in My Selection).
         checkbox_key = f"cmp_pair_{obj_id}"
         current_flag = bool(st.session_state.get(checkbox_key, False))
 
@@ -128,77 +126,12 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         )
 
 st.markdown("---")
+
+# ============================================================
+# Current pair status
+# ============================================================
 st.markdown("### Choose two artworks to compare")
 
-# ============================================================
-# Buttons to clear pair / clear all comparison marks
-# ============================================================
-col_btn_pair, col_btn_all = st.columns(2)
-
-with col_btn_pair:
-    if st.button("Clear current pair (keep candidates)", key="btn_clear_pair"):
-        # Clear only the checkboxes for the current pair selection on this page
-        for obj_id in compare_candidates:
-            checkbox_key = f"cmp_pair_{obj_id}"
-            if checkbox_key in st.session_state:
-                st.session_state[checkbox_key] = False
-
-        # Old multiselect key from previous versions can be removed safely
-        if "cmp_multiselect" in st.session_state:
-            del st.session_state["cmp_multiselect"]
-
-        st.rerun()
-
-with col_btn_all:
-    if st.button("Clear comparison marks in My Selection", key="btn_clear_all_marks"):
-        """
-        This button:
-        - Clears the `_compare_candidate` flag in favorites (all artworks).
-        - Saves the updated favorites to disk.
-        - Clears all 'cmp_pair_*' checkbox states on this page.
-        - Clears 'cmp_candidate_*' states that might exist from My Selection.
-        """
-        changed = False
-        for obj_id, art in favorites.items():
-            if isinstance(art, dict) and art.get("_compare_candidate"):
-                art.pop("_compare_candidate", None)
-                favorites[obj_id] = art
-                changed = True
-
-        if changed:
-            st.session_state["favorites"] = favorites
-            try:
-                with open(FAV_FILE, "w", encoding="utf-8") as f:
-                    json.dump(favorites, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-
-        # Clear comparison candidates list and any local pair selection
-        st.session_state["compare_candidates"] = []
-
-        # Clear all cmp_pair_* keys (this page)
-        keys_to_delete = [k for k in st.session_state.keys() if k.startswith("cmp_pair_")]
-        for k in keys_to_delete:
-            del st.session_state[k]
-
-        # Clear any cmp_candidate_* keys used in My Selection
-        keys_to_delete = [k for k in st.session_state.keys() if k.startswith("cmp_candidate_")]
-        for k in keys_to_delete:
-            del st.session_state[k]
-
-        # Old multiselect state can be removed as well
-        if "cmp_multiselect" in st.session_state:
-            del st.session_state["cmp_multiselect"]
-
-        st.success(
-            "All comparison marks were cleared. "
-            "You can now mark new candidates in **My Selection**."
-        )
-        st.rerun()
-
-# ============================================================
-# Compute the current pair based on the checkboxes
-# ============================================================
 pair_ids = [
     obj_id
     for obj_id in compare_candidates
@@ -206,8 +139,91 @@ pair_ids = [
 ]
 
 num_selected = len(pair_ids)
-st.write(f"Currently selected for comparison: **{num_selected}**")
+st.caption(f"Currently selected for comparison: **{num_selected}**")
 
+# ============================================================
+# Controls in a compact expander (to reduce visual noise)
+# ============================================================
+with st.expander("Pair & comparison controls", expanded=False):
+    st.write(
+        "Use these controls when you want to reset the pair here or clear all "
+        "comparison marks in **My Selection**."
+    )
+
+    col_btn_pair, col_btn_all = st.columns(2)
+
+    with col_btn_pair:
+        if st.button("Clear current pair (keep candidates)", key="btn_clear_pair"):
+            # Clear only the checkboxes for the current pair selection on this page
+            for obj_id in compare_candidates:
+                checkbox_key = f"cmp_pair_{obj_id}"
+                if checkbox_key in st.session_state:
+                    st.session_state[checkbox_key] = False
+
+            # Old multiselect key from previous versions can be removed safely
+            if "cmp_multiselect" in st.session_state:
+                del st.session_state["cmp_multiselect"]
+
+            st.rerun()
+
+    with col_btn_all:
+        if st.button(
+            "Clear comparison marks in My Selection", key="btn_clear_all_marks"
+        ):
+            """
+            This button:
+            - Clears the `_compare_candidate` flag in favorites (all artworks).
+            - Saves the updated favorites to disk.
+            - Clears all 'cmp_pair_*' checkbox states on this page.
+            - Clears 'cmp_candidate_*' states that might exist from My Selection.
+            """
+            changed = False
+            for obj_id, art in favorites.items():
+                if isinstance(art, dict) and art.get("_compare_candidate"):
+                    art.pop("_compare_candidate", None)
+                    favorites[obj_id] = art
+                    changed = True
+
+            if changed:
+                st.session_state["favorites"] = favorites
+                try:
+                    with open(FAV_FILE, "w", encoding="utf-8") as f:
+                        json.dump(favorites, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+
+            # Clear comparison candidates list and any local pair selection
+            st.session_state["compare_candidates"] = []
+
+            # Clear all cmp_pair_* keys (this page)
+            keys_to_delete = [
+                k for k in st.session_state.keys()
+                if k.startswith("cmp_pair_")
+            ]
+            for k in keys_to_delete:
+                del st.session_state[k]
+
+            # Clear any cmp_candidate_* keys used in My Selection
+            keys_to_delete = [
+                k for k in st.session_state.keys()
+                if k.startswith("cmp_candidate_")
+            ]
+            for k in keys_to_delete:
+                del st.session_state[k]
+
+            # Old multiselect state can be removed as well
+            if "cmp_multiselect" in st.session_state:
+                del st.session_state["cmp_multiselect"]
+
+            st.success(
+                "All comparison marks were cleared. "
+                "You can now mark new candidates in **My Selection**."
+            )
+            st.rerun()
+
+# ============================================================
+# Render comparison (or guidance messages)
+# ============================================================
 if num_selected < 2:
     st.info("Select two artworks above to see the side-by-side comparison.")
 elif num_selected > 2:
