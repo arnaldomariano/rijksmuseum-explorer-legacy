@@ -6,6 +6,66 @@ from app_paths import FAV_FILE
 from rijks_api import get_best_image_url
 from analytics import track_event
 
+# ============================================================
+# Local CSS for Compare Artworks page
+# ============================================================
+def inject_compare_css() -> None:
+    """Add a subtle glow around artworks currently in the A/B pair."""
+    st.markdown(
+        """
+        <style>
+        /* Wrapper for each candidate card */
+        .cmp-card {
+            background-color: #181818;
+            border-radius: 12px;
+            padding: 0.75rem 0.9rem 0.95rem 0.9rem;
+            border: 1px solid #262626;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+            transition:
+                box-shadow 0.15s ease-out,
+                border-color 0.15s ease-out,
+                transform 0.10s ease-out,
+                background-color 0.15s ease-out;
+        }
+
+        .cmp-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.65);
+        }
+
+        /* Highlight for artworks that are in the current A/B pair */
+        .cmp-card-selected {
+            border-color: #ffb347;
+            box-shadow:
+                0 0 0 1px #ffb347,
+                0 6px 22px rgba(0,0,0,0.9);
+            background: radial-gradient(circle at top left, #272015 0, #181818 55%);
+        }
+
+        /* Small header line inside the card */
+        .cmp-card-header {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #b7b7b7;
+            margin-bottom: 0.35rem;
+        }
+
+        /* Object ID pill */
+        .cmp-card-objectid {
+            display: inline-block;
+            margin-top: 0.4rem;
+            padding: 0.2rem 0.65rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            background-color: #101010;
+            border: 1px solid #333333;
+            color: #a3e59f;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ============================================================
 # Helpers
@@ -82,19 +142,16 @@ def inject_custom_css() -> None:
 # Page header
 # ============================================================
 
-inject_custom_css()
+inject_custom_css()      # base styling shared with the app
+inject_compare_css()     # extra glow styling for the A/B pair
 
 st.markdown("## 🖼️ Compare Artworks")
 
-st.write(
-    "This page lets you compare **two artworks side by side** using only the "
-    "artworks stored in your **My Selection**."
-)
-
 st.caption(
-    "First, go to the **My Selection** page and mark up to **4 artworks** as "
-    "comparison candidates using **Mark for comparison (up to 4)**. "
-    "Those artworks will appear here so you can pick two to compare in detail."
+    "Workflow for comparison:"
+    "\n1️⃣ Mark up to **4 candidates** on the **My Selection** page."
+    "\n2️⃣ Use the checkboxes below to pick **exactly 2 artworks**."
+    "\n3️⃣ Scroll to see the **side-by-side comparison** with images and metadata."
 )
 
 # Optional flash message (used when clearing all marks)
@@ -234,8 +291,24 @@ st.markdown("### Candidates from My Selection")
 cols = st.columns(len(candidate_arts))
 for col, (obj_id, art) in zip(cols, candidate_arts):
     with col:
-        st.markdown('<div class="rijks-card">', unsafe_allow_html=True)
+        # Decide CSS class based on whether this artwork is in the current A/B pair
+        # current_pair_ids was defined earlier from st.session_state["cmp_pair_ids"]
+        wrapper_class = "rijks-card cmp-card"
+        if obj_id in current_pair_ids:
+            wrapper_class += " cmp-card-selected"
 
+        # Outer visual card wrapper
+        st.markdown(
+            f'<div class="{wrapper_class}">', unsafe_allow_html=True
+        )
+
+        # Optional small header inside the card
+        st.markdown(
+            '<div class="cmp-card-header">Candidate from My Selection</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Thumbnail
         img_url = get_best_image_url(art)
         if img_url:
             try:
@@ -245,11 +318,11 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         else:
             st.caption("No public image available for this artwork via API.")
 
+        # Basic metadata
         title = art.get("title", "Untitled")
         maker = art.get("principalOrFirstMaker", "Unknown artist")
         dating = art.get("dating", {}) or {}
         date = dating.get("presentingDate") or dating.get("year")
-        obj_label = obj_id
 
         st.markdown(
             f'<div class="rijks-card-title">{title}</div>',
@@ -261,7 +334,12 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         )
         if date:
             st.caption(str(date))
-        st.code(obj_label, language=None)
+
+        # Object ID as a small pill instead of code block
+        st.markdown(
+            f'<span class="cmp-card-objectid">{obj_id}</span>',
+            unsafe_allow_html=True,
+        )
 
         # Pair checkbox – its initial state has already been synced above.
         checkbox_key = f"cmp_pair_{obj_id}"
@@ -271,8 +349,6 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         )
 
         st.markdown("</div>", unsafe_allow_html=True)
-
-
 # ============================================================
 # Pair controls + comparison section
 # ============================================================
