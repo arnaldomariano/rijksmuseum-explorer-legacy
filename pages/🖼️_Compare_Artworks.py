@@ -285,30 +285,20 @@ current_pair_ids: list[str] = st.session_state.get("cmp_pair_ids", [])
 # ============================================================
 # Candidate thumbnails + checkboxes
 # ============================================================
-
 st.markdown("### Candidates from My Selection")
 
-cols = st.columns(len(candidate_arts))
+# Decide how many columns to use:
+# - min 3 columns for 1–3 candidates
+# - 4 columns when there are 4 candidates
+num_candidates = len(candidate_arts)
+num_cols = min(max(num_candidates, 3), 4)
+
+cols = st.columns(num_cols)
+
 for col, (obj_id, art) in zip(cols, candidate_arts):
     with col:
-        # Decide CSS class based on whether this artwork is in the current A/B pair
-        # current_pair_ids was defined earlier from st.session_state["cmp_pair_ids"]
-        wrapper_class = "rijks-card cmp-card"
-        if obj_id in current_pair_ids:
-            wrapper_class += " cmp-card-selected"
+        st.markdown('<div class="rijks-card">', unsafe_allow_html=True)
 
-        # Outer visual card wrapper
-        st.markdown(
-            f'<div class="{wrapper_class}">', unsafe_allow_html=True
-        )
-
-        # Optional small header inside the card
-        st.markdown(
-            '<div class="cmp-card-header">Candidate from My Selection</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Thumbnail
         img_url = get_best_image_url(art)
         if img_url:
             try:
@@ -318,11 +308,11 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         else:
             st.caption("No public image available for this artwork via API.")
 
-        # Basic metadata
         title = art.get("title", "Untitled")
         maker = art.get("principalOrFirstMaker", "Unknown artist")
         dating = art.get("dating", {}) or {}
         date = dating.get("presentingDate") or dating.get("year")
+        obj_label = obj_id
 
         st.markdown(
             f'<div class="rijks-card-title">{title}</div>',
@@ -334,14 +324,8 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         )
         if date:
             st.caption(str(date))
+        st.code(obj_label, language=None)
 
-        # Object ID as a small pill instead of code block
-        st.markdown(
-            f'<span class="cmp-card-objectid">{obj_id}</span>',
-            unsafe_allow_html=True,
-        )
-
-        # Pair checkbox – its initial state has already been synced above.
         checkbox_key = f"cmp_pair_{obj_id}"
         st.checkbox(
             "Include in comparison pair",
