@@ -1010,13 +1010,20 @@ for obj_num, art in favorites.items():
     dating = art.get("dating", {}) or {}
     date = dating.get("presentingDate") or dating.get("year") or ""
     link = art.get("links", {}).get("web", "")
-    rows.append([obj_num, title, maker, date, link])
+
+    # NEW: flag indicando se esta obra tem nota de pesquisa
+    note_text = notes.get(obj_num, "")
+    has_note = isinstance(note_text, str) and note_text.strip() != ""
+
+    rows.append([obj_num, title, maker, date, link, has_note])
 
 csv_data = None
 if rows:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["objectNumber", "title", "artist", "date", "web_link"])
+    writer.writerow(
+        ["objectNumber", "title", "artist", "date", "web_link", "has_notes"]
+    )
     writer.writerows(rows)
     csv_data = buffer.getvalue()
 
@@ -1102,26 +1109,62 @@ with col3:
     st.markdown("<h4>PDF</h4>", unsafe_allow_html=True)
     st.markdown("<p>Printable report of your selection.</p>", unsafe_allow_html=True)
 
+    # NEW: escolher o escopo do PDF
+    pdf_scope = st.radio(
+        "Include in PDF:",
+        options=[
+            "All artworks in my selection",
+            "Only artworks with notes",
+        ],
+        index=0,
+        key="pdf_scope_radio",
+    )
+
     if "pdf_buffer" not in st.session_state:
         st.session_state["pdf_buffer"] = None
 
     if st.button("Prepare PDF", key="prepare_pdf_btn"):
+        # Decide quais obras entram no PDF de acordo com o escopo
+        if pdf_scope == "Only artworks with notes":
+            favorites_for_pdf = {
+                obj_num: art
+                for obj_num, art in favorites.items()
+                if isinstance(notes.get(obj_num, ""), str)
+                and notes.get(obj_num, "").strip() != ""
+            }
+        else:
+            favorites_for_pdf = favorites
+
         track_event(
             event="export_prepare",
             page="My_Selection",
-            props={"format": "pdf", "scope": "selection", "count": len(favorites)},
+            props={
+                "format": "pdf",
+                "scope": "selection",
+                "count": len(favorites_for_pdf),
+                "pdf_scope": pdf_scope,
+            },
         )
 
         if not REPORTLAB_AVAILABLE:
             st.warning("Install `reportlab` to enable PDF export.")
         else:
-            with st.spinner("Preparing PDF with thumbnails..."):
-                buf = build_pdf_buffer(favorites, notes)
-            if buf:
-                st.session_state["pdf_buffer"] = buf
-                st.success("PDF ready!")
+            if not favorites_for_pdf:
+                st.warning(
+                    "No artworks match the chosen PDF scope. "
+                    "Add notes to at least one artwork or change the scope."
+                )
+                st.session_state["pdf_buffer"] = None
             else:
-                st.warning("PDF could not be generated.")
+                with st.spinner("Preparing PDF with thumbnails..."):
+                    buf = build_pdf_buffer(favorites_for_pdf, notes)
+                if buf:
+                    st.session_state["pdf_buffer"] = buf
+                    st.success(
+                        f"PDF ready! ({len(favorites_for_pdf)} artwork(s) included)"
+                    )
+                else:
+                    st.warning("PDF could not be generated.")
 
     if st.session_state["pdf_buffer"]:
         clicked = st.download_button(
@@ -1131,6 +1174,16 @@ with col3:
             "application/pdf",
             key="dl_selection_pdf",
         )
+        if clicked:
+            track_event(
+                event="export_download",
+                page="My_Selection",
+                props={
+                    "format": "pdf",
+                    "scope": "selection",
+                    "count": len(favorites),
+                },
+            )
         if clicked:
             track_event(
                 event="export_download",
@@ -1255,6 +1308,10 @@ if st.button("Clear my entire selection"):
 
     st.session_state["detail_art_id"] = None
     st.session_state["compare_candidates"] = []
+
+    # Also clear any prepared PDF buffer (it may refer to the old selection)
+    st.session_state["pdf_buffer"] = None
+
     st.success("Your selection has been cleared.")
     st.rerun()
 
