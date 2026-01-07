@@ -6,8 +6,19 @@ from app_paths import FAV_FILE
 from rijks_api import get_best_image_url
 from analytics import track_event
 
+
 # ============================================================
-# Local CSS for Compare Artworks page
+# Page config
+# ============================================================
+st.set_page_config(
+    page_title="Compare Artworks",
+    page_icon="🖼️",
+    layout="wide",
+)
+
+
+# ============================================================
+# CSS helpers
 # ============================================================
 def inject_compare_css() -> None:
     """Add a subtle glow around artworks currently in the A/B pair."""
@@ -67,10 +78,79 @@ def inject_compare_css() -> None:
         unsafe_allow_html=True,
     )
 
-# ============================================================
-# Helpers
-# ============================================================
 
+def inject_custom_css() -> None:
+    """Global layout + base card styling for this page."""
+    st.markdown(
+        """
+        <style>
+        /* Fundo escuro e texto claro, como no restante do app */
+        .stApp { background-color: #111111; color: #f5f5f5; }
+
+        /* Deixar o container central bem largo */
+        div.block-container {
+            max-width: 95vw;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            padding-top: 1.2rem;
+            padding-bottom: 2.5rem;
+        }
+
+        @media (min-width: 1400px) {
+            div.block-container {
+                padding-left: 3rem;
+                padding-right: 3rem;
+            }
+        }
+
+        /* Cartão genérico no estilo Rijks (se usado aqui) */
+        .rijks-card {
+            background-color: #181818;
+            border-radius: 12px;
+            padding: 0.75rem 0.75rem 0.9rem 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            border: 1px solid #262626;
+            margin-bottom: 1rem;
+            margin-top: 0.35rem;
+        }
+
+        .rijks-card img {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .rijks-card-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+            margin-bottom: 0.15rem;
+            color: #f1f1f1;
+        }
+
+        .rijks-card-caption {
+            font-size: 0.8rem;
+            color: #b8b8b8;
+            margin-bottom: 0.25rem;
+        }
+
+        .rijks-compare-controls {
+            background-color: #181818;
+            border-radius: 12px;
+            border: 1px solid #262626;
+            padding: 0.8rem 1rem 1rem 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# Data helpers
+# ============================================================
 def load_favorites_from_disk() -> dict:
     """Load favorites from the local JSON file if needed."""
     if FAV_FILE.exists():
@@ -93,65 +173,17 @@ def get_compare_candidates_from_favorites(favorites: dict) -> list[str]:
     ]
 
 
-def inject_custom_css() -> None:
-    """Small CSS tweaks so cards match the rest of the app."""
-    st.markdown(
-        """
-        <style>
-        .rijks-card {
-            background-color: #181818;
-            border-radius: 12px;
-            padding: 0.75rem 0.75rem 0.9rem 0.75rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-            border: 1px solid #262626;
-            margin-bottom: 1rem;
-            margin-top: 0.35rem;
-        }
-        .rijks-card img {
-            width: 100%;
-            height: 220px;
-            object-fit: cover;
-            border-radius: 8px;
-        }
-        .rijks-card-title {
-            font-size: 0.95rem;
-            font-weight: 600;
-            margin-top: 0.5rem;
-            margin-bottom: 0.15rem;
-            color: #f1f1f1;
-        }
-        .rijks-card-caption {
-            font-size: 0.8rem;
-            color: #b8b8b8;
-            margin-bottom: 0.25rem;
-        }
-        .rijks-compare-controls {
-            background-color: #181818;
-            border-radius: 12px;
-            border: 1px solid #262626;
-            padding: 0.8rem 1rem 1rem 1rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 # ============================================================
 # Page header
 # ============================================================
-
-inject_custom_css()      # base styling shared with the app
-inject_compare_css()     # extra glow styling for the A/B pair
+inject_custom_css()
+inject_compare_css()
 
 st.markdown("## 🖼️ Compare Artworks")
-
 st.caption(
-    "Workflow for comparison:"
-    "\n1️⃣ Mark up to **4 candidates** on the **My Selection** page."
-    "\n2️⃣ Use the checkboxes below to pick **exactly 2 artworks**."
-    "\n3️⃣ Scroll to see the **side-by-side comparison** with images and metadata."
+    "1. Mark up to **4 candidates** in **My Selection** · "
+    "2. Tick **exactly 2** below · "
+    "3. Scroll for the side-by-side comparison."
 )
 
 # Optional flash message (used when clearing all marks)
@@ -163,7 +195,6 @@ if flash_msg:
 # ============================================================
 # Load favorites + handle 'clear all marks' action from previous run
 # ============================================================
-
 if "favorites" not in st.session_state:
     st.session_state["favorites"] = load_favorites_from_disk()
 
@@ -208,10 +239,6 @@ if clear_all_requested:
 # ============================================================
 # Build candidate list from favorites
 # ============================================================
-
-compare_candidates = get_compare_candidates_from_favorites(favorites)
-st.session_state["compare_candidates"] = compare_candidates
-
 if not favorites:
     st.warning(
         "You do not have any artworks in your selection yet. "
@@ -219,6 +246,9 @@ if not favorites:
         "**In my selection**, and then return here."
     )
     st.stop()
+
+compare_candidates = get_compare_candidates_from_favorites(favorites)
+st.session_state["compare_candidates"] = compare_candidates
 
 if not compare_candidates:
     st.info(
@@ -239,8 +269,6 @@ candidate_ids = [obj_id for obj_id, _ in candidate_arts]
 # ============================================================
 # Sync pair state (checkboxes <-> cmp_pair_ids)
 # ============================================================
-
-# If the user clicked "Clear current pair" in the previous run, we apply it now.
 clear_pair_requested = st.session_state.pop("cmp_action_clear_pair", False)
 
 if clear_pair_requested:
@@ -287,17 +315,23 @@ current_pair_ids: list[str] = st.session_state.get("cmp_pair_ids", [])
 # ============================================================
 st.markdown("### Candidates from My Selection")
 
-# Decide how many columns to use:
-# - min 3 columns for 1–3 candidates
-# - 4 columns when there are 4 candidates
-num_candidates = len(candidate_arts)
-num_cols = min(max(num_candidates, 3), 4)
-
-cols = st.columns(num_cols)
-
+cols = st.columns(len(candidate_arts))
 for col, (obj_id, art) in zip(cols, candidate_arts):
+    # Is this artwork currently in the A/B pair?
+    is_selected = obj_id in current_pair_ids
+
+    # Base card classes + optional “selected” glow
+    card_classes = "cmp-card"
+    if is_selected:
+        card_classes += " cmp-card-selected"
+
     with col:
-        st.markdown('<div class="rijks-card">', unsafe_allow_html=True)
+        st.markdown(f'<div class="{card_classes}">', unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="cmp-card-header">CANDIDATE FROM MY SELECTION</div>',
+            unsafe_allow_html=True,
+        )
 
         img_url = get_best_image_url(art)
         if img_url:
@@ -324,7 +358,11 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         )
         if date:
             st.caption(str(date))
-        st.code(obj_label, language=None)
+
+        st.markdown(
+            f'<span class="cmp-card-objectid">{obj_label}</span>',
+            unsafe_allow_html=True,
+        )
 
         checkbox_key = f"cmp_pair_{obj_id}"
         st.checkbox(
@@ -333,17 +371,17 @@ for col, (obj_id, art) in zip(cols, candidate_arts):
         )
 
         st.markdown("</div>", unsafe_allow_html=True)
+
+
 # ============================================================
 # Pair controls + comparison section
 # ============================================================
-
 st.markdown("---")
 st.markdown("### Choose two artworks to compare")
 
 num_selected = len(current_pair_ids)
 st.write(f"Currently selected for comparison: **{num_selected}**")
 
-# Nice compact control band with our two buttons
 with st.expander("Pair & comparison controls", expanded=(num_selected == 0)):
     with st.container():
         st.markdown('<div class="rijks-compare-controls">', unsafe_allow_html=True)
@@ -351,8 +389,6 @@ with st.expander("Pair & comparison controls", expanded=(num_selected == 0)):
 
         with col_btn_pair:
             if st.button("Clear current pair (keep candidates)", key="btn_clear_pair"):
-                # We only set a flag here; the actual reset happens at the top
-                # of the next run, before any checkboxes are created.
                 st.session_state["cmp_action_clear_pair"] = True
                 st.rerun()
 
@@ -361,8 +397,6 @@ with st.expander("Pair & comparison controls", expanded=(num_selected == 0)):
                 "Clear comparison marks in My Selection",
                 key="btn_clear_all_marks",
             ):
-                # This flag is handled at the very top of the script
-                # (favorites + candidate marks are cleared, then we rerun).
                 st.session_state["cmp_action_clear_all"] = True
                 st.rerun()
 
@@ -376,8 +410,8 @@ if num_selected < 2:
         "You can include or exclude artworks using the checkboxes under each candidate."
     )
 elif num_selected > 2:
-    # This should never happen because we enforce max-2, but just in case:
     st.warning("Please keep **exactly 2** artworks selected.")
+
 else:
     # Exactly two artworks in the pair for this run.
     id_a, id_b = current_pair_ids
@@ -387,7 +421,6 @@ else:
     if not art_a or not art_b:
         st.error("Could not retrieve both artworks for comparison.")
     else:
-        # Analytics: log that this pair was visualised
         track_event(
             event="compare_clicked",
             page="Compare",

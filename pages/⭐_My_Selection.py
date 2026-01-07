@@ -386,6 +386,15 @@ def inject_custom_css() -> None:
             background-color: rgba(255, 255, 255, 0.02);
         }
 
+        /* Highlight for artworks marked as comparison candidates */
+        .rijks-card-compare-candidate {
+            border-color: #ffb347;
+            box-shadow:
+                0 0 0 1px #ffb347,
+                0 4px 14px rgba(0, 0, 0, 0.9);
+            position: relative;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -690,6 +699,42 @@ favorites: dict = st.session_state["favorites"]
 
 load_notes()
 notes: dict = st.session_state.get("notes", {})
+
+# Flag para avisar quando o limite de 4 candidatos é atingido
+if "cmp_limit_warning" not in st.session_state:
+    st.session_state["cmp_limit_warning"] = False
+
+# Versão dos checkboxes de comparação (para forçar recriação quando necessário)
+if "cmp_key_generation" not in st.session_state:
+    st.session_state["cmp_key_generation"] = 0
+
+# ------------------------------------------------------------
+# NEW: auto-clean – keep at most 4 comparison candidates
+# ------------------------------------------------------------
+def get_compare_candidates_from_favorites(fav: dict) -> list[str]:
+    """Return objectNumbers marked as comparison candidates inside favorites."""
+    return [
+        obj_num
+        for obj_num, art in fav.items()
+        if isinstance(art, dict) and art.get("_compare_candidate")
+    ]
+
+candidate_ids_all = get_compare_candidates_from_favorites(favorites)
+
+if len(candidate_ids_all) > 4:
+    # Keep only the first 4, remove the rest
+    for obj_num in candidate_ids_all[4:]:
+        art = favorites.get(obj_num)
+        if isinstance(art, dict) and art.get("_compare_candidate"):
+            art.pop("_compare_candidate", None)
+            favorites[obj_num] = art
+
+    st.session_state["favorites"] = favorites
+    try:
+        with open(FAV_FILE, "w", encoding="utf-8") as f:
+            json.dump(favorites, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 # ============================================================
 # Comparison candidates helper
@@ -1380,7 +1425,7 @@ else:
 
     if candidate_ids:
         with st.expander(
-            "🎯 Comparison candidates (from My Selection)", expanded=False
+                "🎯 Comparison candidates (from My Selection)", expanded=False
         ):
             st.write(
                 "These artworks are marked for cross-page comparison. "
@@ -1411,11 +1456,6 @@ else:
                         art.pop("_compare_candidate", None)
                         favorites[obj_num] = art
 
-                    # Also reset the associated checkbox state in session_state
-                    cmp_key = f"cmp_candidate_{obj_num}"
-                    if cmp_key in st.session_state:
-                        st.session_state[cmp_key] = False
-
                 # Persist updated favorites to disk
                 st.session_state["favorites"] = favorites
                 try:
@@ -1426,6 +1466,12 @@ else:
 
                 # Clear in-memory list of comparison candidates
                 st.session_state["compare_candidates"] = []
+
+                # Força recriação dos checkboxes com novas keys
+                st.session_state["cmp_key_generation"] = (
+                        st.session_state.get("cmp_key_generation", 0) + 1
+                )
+
                 st.success("All comparison marks have been cleared.")
                 st.rerun()
     else:
@@ -1448,9 +1494,59 @@ else:
             f"comparison candidate(s)."
         )
 
+
     # =========================================================
     # Card rendering helper (used by both gallery modes)
     # =========================================================
+    def handle_compare_logic(obj_num: str, desired: bool):
+        """
+        Atualiza o status de comparação de um artwork.
+
+        - Garante no máximo 4 candidatos.
+        - Atualiza favorites[obj_num]['_compare_candidate'].
+        - Persiste em disco.
+        - Quando o usuário tenta marcar o 5º, dispara um aviso,
+          incrementa cmp_key_generation e dá st.rerun()
+          para recriar os checkboxes com o estado correto.
+        """
+        art = favorites.get(obj_num)
+        if not isinstance(art, dict):
+            return
+
+        is_candidate = bool(art.get("_compare_candidate"))
+        current_candidates = get_compare_candidates_from_favorites(favorites)
+
+        # Usuário está tentando MARCAR como candidato
+        if desired and not is_candidate:
+            if len(current_candidates) >= 4:
+                # Apenas avisa; não marca o 5º, recria checkboxes e rerun
+                st.session_state["cmp_limit_warning"] = True
+                st.session_state["cmp_key_generation"] = (
+                        st.session_state.get("cmp_key_generation", 0) + 1
+                )
+                st.rerun()
+                return
+            art["_compare_candidate"] = True
+
+        # Usuário está tentando DESMARCAR algo que já era candidato
+        elif not desired and is_candidate:
+            art.pop("_compare_candidate", None)
+
+        else:
+            # Nada mudou de fato
+            return
+
+        # Atualiza favorites em memória e em disco
+        favorites[obj_num] = art
+        st.session_state["favorites"] = favorites
+        try:
+            with open(FAV_FILE, "w", encoding="utf-8") as f:
+                json.dump(favorites, f, ensure_ascii=False, indent=2)
+        except Exception:
+            # nunca quebrar a UI por erro de disco
+            pass
+
+
     def render_cards(items: list[tuple[str, dict]], allow_compare: bool):
         """
         Render a grid of artwork cards.
@@ -1464,7 +1560,7 @@ else:
             as comparison candidates (used across pages).
         """
         for start_idx in range(0, len(items), cards_per_row):
-            row_items = items[start_idx : start_idx + cards_per_row]
+            row_items = items[start_idx: start_idx + cards_per_row]
             cols = st.columns(len(row_items))
 
             for col, (obj_num, art) in zip(cols, row_items):
@@ -1472,6 +1568,7 @@ else:
                     note_for_this = notes.get(obj_num, "")
                     has_notes_flag = isinstance(note_for_this, str) and note_for_this.strip()
 
+                    # Base card classes
                     card_classes = "rijks-card"
                     card_classes += (
                         " rijks-card-has-notes"
@@ -1479,6 +1576,9 @@ else:
                         else " rijks-card-no-notes"
                     )
 
+                    # Extra highlight quando é candidato à comparação
+                    if isinstance(art, dict) and art.get("_compare_candidate"):
+                        card_classes += " rijks-card-compare-candidate"
                     st.markdown(
                         f'<div class="{card_classes}">', unsafe_allow_html=True
                     )
@@ -1552,54 +1652,26 @@ else:
                                 f"**Production place(s): {', '.join(production_places)}"
                             )
 
-                    # Comparison candidate checkbox (shared with Compare Artworks page)
+                    # --------------------------------------------------------
+                    # Checkbox "Mark for comparison"
+                    # --------------------------------------------------------
                     if allow_compare and obj_num:
-                        # Comparison mark is stored inside the artwork dict
                         is_candidate = bool(art.get("_compare_candidate"))
-                        cmp_key = f"cmp_candidate_{obj_num}"
 
+                        # Usa geração para forçar recriação quando necessário
+                        cmp_gen = st.session_state.get("cmp_key_generation", 0)
+                        cmp_key = f"cmp_candidate_{obj_num}_{cmp_gen}"
                         label = "Mark for comparison"
-                        checked = st.checkbox(label, value=is_candidate, key=cmp_key)
 
-                        # If the checkbox state changed, update the favorite
+                        checked = st.checkbox(
+                            label,
+                            key=cmp_key,
+                            value=is_candidate,
+                        )
+
+                        # Se o usuário mudou o estado do checkbox, aplica a lógica
                         if checked != is_candidate:
-                            if checked:
-                                # Enforce a maximum of 4 comparison candidates
-                                current_candidates = get_compare_candidates_from_favorites(
-                                    favorites
-                                )
-                                if len(current_candidates) >= 4:
-                                    st.warning(
-                                        "You can mark at most 4 artworks for comparison. "
-                                        "Unmark another one first."
-                                    )
-                                    # Do not set the flag; keep previous state in favorites
-                                    # (checkbox visual state will be corrected on next rerun)
-                                else:
-                                    art["_compare_candidate"] = True
-                            else:
-                                # Remove comparison marker from this artwork
-                                art.pop("_compare_candidate", None)
-
-                            # Update favorites in memory
-                            favorites[obj_num] = art
-                            st.session_state["favorites"] = favorites
-
-                            # Persist change to disk
-                            try:
-                                with open(FAV_FILE, "w", encoding="utf-8") as f:
-                                    json.dump(
-                                        favorites,
-                                        f,
-                                        ensure_ascii=False,
-                                        indent=2,
-                                    )
-                            except Exception:
-                                # Never break the UI because of a write error
-                                pass
-
-                        # Note: we do not manually touch st.session_state[cmp_key]
-                        # outside of the widget creation to avoid StreamlitAPIException.
+                            handle_compare_logic(obj_num, checked)
 
                     # Detail view button
                     if st.button("View details", key=f"detail_btn_{obj_num}"):
@@ -1607,7 +1679,7 @@ else:
 
                     # Remove from selection (card level)
                     if st.button(
-                        "Remove from my selection", key=f"remove_card_{obj_num}"
+                            "Remove from my selection", key=f"remove_card_{obj_num}"
                     ):
 
                         track_event(
@@ -1660,6 +1732,7 @@ else:
                         st.rerun()
 
                     st.markdown("</div>", unsafe_allow_html=True)
+
 
     # =========================================================
     # MODE A) GROUP BY ARTIST
@@ -1729,6 +1802,7 @@ else:
             f"{total_artists} artist(s) and {len(base_items)} artwork(s) total after filters."
         )
 
+
         def sort_items_for_artist(items: list[tuple[str, dict]]):
             """Apply the selected within-artist sorting option to a list of items."""
             if sort_within_artist == "Title (A–Z)":
@@ -1742,14 +1816,14 @@ else:
                 items.sort(
                     key=lambda it: (
                         get_year_for_sort(it[1]) is None,
-                        get_year_for_sort(it[1]) or 10**9,
+                        get_year_for_sort(it[1]) or 10 ** 9,
                     )
                 )
             elif sort_within_artist == "Year (newest → oldest)":
                 items.sort(
                     key=lambda it: (
                         get_year_for_sort(it[1]) is None,
-                        -(get_year_for_sort(it[1]) or -10**9),
+                        -(get_year_for_sort(it[1]) or -10 ** 9),
                     )
                 )
             elif sort_within_artist == "Notes first":
@@ -1759,6 +1833,7 @@ else:
                         it[1].get("title", ""),
                     )
                 )
+
 
         visible_items: list[tuple[str, dict]] = []
 
@@ -1784,7 +1859,7 @@ else:
             header_line = " • ".join(subtitle_parts)
 
             with st.expander(
-                f"👤 {artist} — {header_line}", expanded=expand_artists
+                    f"👤 {artist} — {header_line}", expanded=expand_artists
             ):
                 render_cards(items, allow_compare=enable_compare_grouped)
 
@@ -1821,6 +1896,14 @@ else:
         st.markdown("### Mark artworks from your selection as comparison candidates")
         render_cards(page_items, allow_compare=True)
 
+        # Aviso quando tentar marcar mais de 4
+        if st.session_state.get("cmp_limit_warning"):
+            st.warning(
+                "You can mark at most 4 artworks for comparison. "
+                "Unmark another one first."
+            )
+            st.session_state["cmp_limit_warning"] = False
+
         # Recompute candidates from favorites (single source of truth) and
         # store them in session_state for the Compare Artworks page
         compare_candidates = get_compare_candidates_from_favorites(favorites)
@@ -1836,7 +1919,6 @@ else:
                 f"Currently marked for comparison: **{num_candidates}** artwork(s). "
                 "Open the **Compare Artworks** page to run the side-by-side view."
             )
-
 # ============================================================
 # Detail view + research notes editor
 # ============================================================
