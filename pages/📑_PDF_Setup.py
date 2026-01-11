@@ -115,10 +115,9 @@ def _default_pdf_meta() -> dict:
         "include_cover": True,
         "include_opening_text": True,
         "include_notes": True,
-        "include_comments": True,
-        "artwork_comments": {},  # objectNumber -> text
+        # Comentários por obra foram removidos do app;
+        # chaves antigas no JSON, se existirem, serão ignoradas.
     }
-
 
 def load_pdf_meta() -> dict:
     """
@@ -243,12 +242,6 @@ include_notes_flag = st.checkbox(
     help="When enabled, the PDF will include your notes from the My Selection page.",
 )
 
-include_comments_flag = st.checkbox(
-    "Include commentary text in each artwork page",
-    value=bool(pdf_meta.get("include_comments", True)),
-    help="Optional commentary separate from research notes (see section below).",
-)
-
 opening_text = st.text_area(
     "Opening text (optional introduction)",
     value=pdf_meta.get("opening_text", ""),
@@ -259,90 +252,6 @@ opening_text = st.text_area(
         "or any narrative you want to add."
     ),
 )
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ------------------------------------------------------------
-# Artwork-specific comments (advanced)
-# ------------------------------------------------------------
-st.markdown('<div class="rijks-panel">', unsafe_allow_html=True)
-st.markdown("### Artwork-specific comments (optional)")
-
-artwork_comments = dict(pdf_meta.get("artwork_comments") or {})
-
-if artwork_comments:
-    st.caption("Existing comments:")
-    for obj_id, txt in artwork_comments.items():
-        short_txt = (txt[:120] + "…") if isinstance(txt, str) and len(txt) > 120 else txt
-        st.write(f"- **{obj_id}** — {short_txt}")
-else:
-    st.caption("No artwork-specific comments defined yet.")
-
-st.markdown("---")
-
-obj_id_input = st.text_input(
-    "Artwork ID (objectNumber)",
-    value="",
-    help="Use the object ID as shown on the My Selection page (e.g. SK-A-3452).",
-    key="pdf_comment_object_id",
-)
-
-comment_text_input = st.text_area(
-    "Comment for this artwork",
-    value="",
-    height=140,
-    help=(
-        "Optional commentary that will appear in the PDF for this specific artwork, "
-        "in addition to your research notes."
-    ),
-    key="pdf_comment_text",
-)
-
-col_c1, col_c2 = st.columns(2)
-
-with col_c1:
-    if st.button("Save / update comment for this artwork"):
-        obj_id = obj_id_input.strip()
-        if not obj_id:
-            st.warning("Please enter a valid artwork ID (objectNumber).")
-        else:
-            artwork_comments[obj_id] = comment_text_input.strip()
-            pdf_meta["artwork_comments"] = artwork_comments
-            save_pdf_meta(pdf_meta)
-
-            track_event(
-                event="pdf_comment_saved",
-                page="PDF_Setup",
-                props={
-                    "object_id": obj_id,
-                    "comment_len": len(comment_text_input.strip()),
-                    "total_comments": len(artwork_comments),
-                },
-            )
-
-            st.success(f"Comment saved for artwork {obj_id}.")
-            st.experimental_rerun()
-
-with col_c2:
-    if st.button("Remove comment for this artwork"):
-        obj_id = obj_id_input.strip()
-        if not obj_id:
-            st.warning("Please enter an artwork ID to remove its comment.")
-        elif obj_id not in artwork_comments:
-            st.info("There is no saved comment for this artwork ID.")
-        else:
-            artwork_comments.pop(obj_id, None)
-            pdf_meta["artwork_comments"] = artwork_comments
-            save_pdf_meta(pdf_meta)
-
-            track_event(
-                event="pdf_comment_removed",
-                page="PDF_Setup",
-                props={"object_id": obj_id, "total_comments": len(artwork_comments)},
-            )
-
-            st.success(f"Comment removed for artwork {obj_id}.")
-            st.experimental_rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -360,10 +269,7 @@ with col_s1:
         updated["include_cover"] = bool(include_cover)
         updated["include_opening_text"] = bool(include_opening_text)
         updated["include_notes"] = bool(include_notes_flag)
-        updated["include_comments"] = bool(include_comments_flag)
         updated["opening_text"] = opening_text
-        # Keep artwork_comments as edited above
-        updated["artwork_comments"] = artwork_comments
 
         save_pdf_meta(updated)
 
@@ -374,14 +280,12 @@ with col_s1:
                 "include_cover": bool(include_cover),
                 "include_opening_text": bool(include_opening_text),
                 "include_notes": bool(include_notes_flag),
-                "include_comments": bool(include_comments_flag),
                 "has_opening_text": bool(opening_text.strip()),
-                "num_artwork_comments": len(artwork_comments),
+                # Comentários específicos removidos
             },
         )
 
         st.success("PDF configuration saved. You can now prepare the PDF on the My Selection page.")
-
 with col_s2:
     if st.button("↩️ Reset to default settings", use_container_width=True):
         base = _default_pdf_meta()
@@ -394,7 +298,7 @@ with col_s2:
         )
 
         st.success("PDF settings reset to defaults.")
-        st.experimental_rerun()
+        st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
 

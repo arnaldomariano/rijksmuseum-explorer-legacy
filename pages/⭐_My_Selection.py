@@ -75,10 +75,8 @@ def load_pdf_meta() -> dict:
         "include_cover": True,
         "include_opening_text": True,
         "include_notes": True,
-        "include_comments": True,
-        "artwork_comments": {},
+        # Campos antigos (include_comments, artwork_comments) foram descontinuados.
     }
-
     if PDF_META_FILE.exists():
         try:
             with open(PDF_META_FILE, "r", encoding="utf-8") as f:
@@ -433,9 +431,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
     include_cover = bool(pdf_meta.get("include_cover", True))
     include_opening_text = bool(pdf_meta.get("include_opening_text", True))
     include_notes_flag = bool(pdf_meta.get("include_notes", True))
-    include_comments_flag = bool(pdf_meta.get("include_comments", True))
     opening_text_cfg = (pdf_meta.get("opening_text") or "").strip()
-    artwork_comments = pdf_meta.get("artwork_comments") or {}
 
     pdf_buffer = io.BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=A4)
@@ -625,19 +621,9 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
             y_text -= 14
             short_link = link.replace("https://", "")
             c.drawString(x_text, y_text, f"Link: {short_link}")
-
-        # Text blocks (comments + notes)
+        # Text blocks: somente research notes (comentários específicos removidos)
         y_cursor = (y_image_top - thumb_h - 40) if image_drawn else (y_text - 28)
         y_cursor = min(y_cursor, y_text - 28)
-
-        if include_comments_flag:
-            comment_text = artwork_comments.get(obj_num, "")
-            y_cursor = draw_text_block(
-                "Commentary:",
-                comment_text,
-                y_cursor,
-                f"Commentary (cont.) — {obj_num}",
-            )
 
         if include_notes_flag:
             note_text = notes.get(obj_num, "")
@@ -649,7 +635,7 @@ def build_pdf_buffer(favorites: dict, notes: dict) -> bytes | None:
                 f"Notes (cont.) — {obj_num}",
             )
 
-        draw_footer()
+            draw_footer()
         c.showPage()
 
     c.save()
